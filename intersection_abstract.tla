@@ -30,11 +30,12 @@ NSEnter ==
     /\ ns_outside
     /\ ~ew_inside
     /\ ns_inside' = TRUE
-    /\ UNCHANGED <<ns_outside, ew_inside, ew_outside>>
+    /\ ns_outside' = FALSE
+    /\ UNCHANGED <<ew_inside, ew_outside>>
 
 NSExit ==
     /\ ns_inside
-    /\ ns_inside' = TRUE
+    /\ ns_inside' = FALSE
     /\ UNCHANGED <<ns_outside, ew_inside, ew_outside>>
 
 EWApproach ==
@@ -45,11 +46,12 @@ EWEnter ==
     /\ ew_outside
     /\ ~ns_inside
     /\ ew_inside' = TRUE
-    /\ UNCHANGED <<ns_inside, ns_outside, ew_outside>>
+    /\ ew_outside' = FALSE
+    /\ UNCHANGED <<ns_inside, ns_outside>>
 
 EWExit ==
     /\ ew_inside
-    /\ ew_inside' = TRUE
+    /\ ew_inside' = FALSE
     /\ UNCHANGED <<ns_inside, ns_outside, ew_outside>>
 
 Next ==
