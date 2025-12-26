@@ -8,7 +8,8 @@ the intersection, we no longer track them.  Cars from different directions in
 the intersection simultaneously represents a crash.  In this spec, cars simply
 don't do that, for reasons unexplained here.  We'd need to use a refinement
 mapping to provide a reason for their behavior, such as a stop sign or
-stoplights. *)
+stoplights.  We justify cars traveling the same direction waiting for one
+another by the fact that they are following eachother. *)
 
 VARIABLES
     ns_inside,
@@ -28,6 +29,7 @@ NSApproach ==
 
 NSEnter ==
     /\ ns_outside
+    /\ ~ns_inside
     /\ ~ew_inside
     /\ ns_inside' = TRUE
     /\ ns_outside' = FALSE
@@ -44,6 +46,7 @@ EWApproach ==
 
 EWEnter ==
     /\ ew_outside
+    /\ ~ew_inside
     /\ ~ns_inside
     /\ ew_inside' = TRUE
     /\ ew_outside' = FALSE
