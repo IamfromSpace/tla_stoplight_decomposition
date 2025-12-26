@@ -9,7 +9,10 @@ the intersection simultaneously represents a crash.  In this spec, cars simply
 don't do that, for reasons unexplained here.  We'd need to use a refinement
 mapping to provide a reason for their behavior, such as a stop sign or
 stoplights.  We justify cars traveling the same direction waiting for one
-another by the fact that they are following eachother. *)
+another by the fact that they are following eachother.
+
+Also, our cars act fairly, no direction ends up waiting forever.  Again, we
+don't explain here how that's actually accomplished. *)
 
 VARIABLES
     ns_inside,
@@ -69,12 +72,17 @@ vars == <<ns_inside, ns_outside, ew_inside, ew_outside>>
 
 Fairness ==
     /\ WF_vars(NSExit \/ EWExit)
-    /\ SF_vars(NSEnter \/ EWEnter)
+    /\ SF_vars(NSEnter)
+    /\ SF_vars(EWEnter)
 
 SpecClosed == Init /\ [][Next]_vars
 Spec == SpecClosed /\ Fairness
 
 NoCrash ==
     ~(ns_inside /\ ew_inside)
+
+NoInfiniteWaiting ==
+    /\ ns_outside ~> ~ns_outside
+    /\ ew_outside ~> ~ew_outside
 
 ====
