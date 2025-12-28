@@ -16,7 +16,8 @@ VARIABLES
     ns_arrived_first,
     wait
 
-vars == <<ns_inside, ns_outside, ew_inside, ew_outside, ns_arrived_first>>
+\* vars don't act like vars when imported as an instance, so we keep them local
+LOCAL vars == <<ns_inside, ns_outside, ew_inside, ew_outside, ns_arrived_first>>
 
 Init ==
     /\ ns_inside = FALSE
