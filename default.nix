@@ -52,6 +52,26 @@ let
       mkdir -p $out/share
       tlc $SPEC -config ${./intersection_stoplight_composite.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
       '';
+
+  intersection_stoplight_composite_trace =
+    pkgs.runCommand
+      "intersection_stoplight_composite_trace"
+      {
+        buildInputs = [ pkgs.tlaplus ];
+      }
+      ''
+      set -euo pipefail
+
+      SPEC=intersection_stoplight_composite_trace.tla
+      WORKERS=$(( $(nproc) * 3 / 4 ))
+      cp -L ${./intersection_abstract.tla} intersection_abstract.tla
+      cp -L ${./intersection_stoplight_lane.tla} intersection_stoplight_lane.tla
+      cp -L ${./intersection_stoplight_abstract.tla} intersection_stoplight_abstract.tla
+      cp -L ${./intersection_stoplight_composite.tla} intersection_stoplight_composite.tla
+      cp -L ${./intersection_stoplight_composite_trace.tla} $SPEC
+      mkdir -p $out/share
+      tlc $SPEC -config ${./intersection_stoplight_composite_trace.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
+      '';
 in
   pkgs.symlinkJoin
     { name = "all_specs";
@@ -59,5 +79,6 @@ in
         [ intersection_abstract
           intersection_stopsign
           intersection_stoplight_composite
+          intersection_stoplight_composite_trace
         ];
     }
