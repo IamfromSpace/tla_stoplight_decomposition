@@ -73,4 +73,10 @@ Spec == SpecClosed /\ Fairness
 Abstract == INSTANCE intersection_abstract
 ImplementsAbstract == Abstract!Spec
 
+Environment == INSTANCE intersection_stoplight_environment
+    WITH is_a_light_green <- ns_is_green \/ ew_is_green,
+         is_intersection_clear <- ~ns_inside /\ ~ew_inside
+
+ClosedSpecRefinesStoplightEnvironment == Environment!Spec
+
 ====
