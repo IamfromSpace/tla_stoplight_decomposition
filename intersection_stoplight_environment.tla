@@ -3,19 +3,21 @@
 (* Minimal environment specification for a stoplight-controlled intersection.
 
    This environment spec captures the assumptions about the environment's
-   behavior regarding intersection clearing. It has two variables:
+   behavior regarding intersection clearing. It has three variables:
 
-   - is_a_light_green: TRUE when at least one light is green
+   - ns_is_green: TRUE when the NS light is green
+   - ew_is_green: TRUE when the EW light is green
    - is_intersection_clear: TRUE when the intersection is clear and safe
 
    The environment allows:
-   - The intersection to clear at any time (when no light is green)
-   - Cars may enter the intersection when a light is green
+   - The intersection to clear at any time
+   - Cars may enter the intersection when a light is green (either direction)
 
-   Lights state are system-controlled *)
+   Light states are system-controlled *)
 
 VARIABLES
-    is_a_light_green,
+    ns_is_green,
+    ew_is_green,
     is_intersection_clear
 
 Init ==
@@ -24,13 +26,13 @@ Init ==
 \* Cars may always leave the intersection, ignoring lights
 ClearIntersection ==
     /\ is_intersection_clear' = TRUE
-    /\ UNCHANGED is_a_light_green
+    /\ UNCHANGED <<ns_is_green, ew_is_green>>
 
 \* Cars can only enter if a light is green (we don't care about direction)
 CarEnters ==
-    /\ is_a_light_green
+    /\ ns_is_green \/ ew_is_green
     /\ is_intersection_clear' = FALSE
-    /\ UNCHANGED is_a_light_green
+    /\ UNCHANGED <<ns_is_green, ew_is_green>>
 
 Next ==
     \/ ClearIntersection
