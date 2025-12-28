@@ -25,14 +25,12 @@ Init ==
 
 \* Cars may always leave the intersection, ignoring lights
 ClearIntersection ==
-    /\ is_intersection_clear' = TRUE
-    /\ UNCHANGED <<ns_is_green, ew_is_green>>
+    is_intersection_clear' = TRUE
 
 \* Cars can only enter if a light is green (we don't care about direction)
 CarEnters ==
     /\ ns_is_green \/ ew_is_green
     /\ is_intersection_clear' = FALSE
-    /\ UNCHANGED <<ns_is_green, ew_is_green>>
 
 Next ==
     \/ ClearIntersection
