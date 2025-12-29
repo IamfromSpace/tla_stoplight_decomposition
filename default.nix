@@ -113,6 +113,25 @@ let
       mkdir -p $out/share
       tlc $SPEC -config ${./intersection_stoplight_in_environment.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
       '';
+
+  intersection_stoplight_environment_plus =
+    pkgs.runCommand
+      "intersection_stoplight_environment_plus"
+      {
+        # TODO: Isabelle doesn't seem to work
+        buildInputs = [ pkgs.tlaps pkgs.ps pkgs.z3 pkgs.isabelle ];
+      }
+      ''
+      set -euo pipefail
+
+      SPEC=intersection_stoplight_environment_plus.tla
+      cp -L ${./intersection_stoplight.tla} intersection_stoplight.tla
+      cp -L ${./intersection_stoplight_environment.tla} intersection_stoplight_environment.tla
+      cp -L ${./intersection_stoplight_abstract.tla} intersection_stoplight_abstract.tla
+      cp -L ${./intersection_stoplight_environment_plus.tla} $SPEC
+      mkdir -p $out/share
+      tlapm $SPEC | tee $out/share/$SPEC-tlaps.log
+      '';
 in
   pkgs.symlinkJoin
     { name = "all_specs";
@@ -123,5 +142,6 @@ in
           intersection_stoplight_composite_trace
           intersection_stoplight_composite_env
           intersection_stoplight_in_environment
+          intersection_stoplight_environment_plus
         ];
     }

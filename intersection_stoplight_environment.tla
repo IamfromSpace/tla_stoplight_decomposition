@@ -21,7 +21,8 @@ VARIABLES
     is_intersection_clear
 
 Init ==
-    is_intersection_clear \in BOOLEAN
+    \/ is_intersection_clear = TRUE
+    \/ is_intersection_clear = FALSE
 
 \* Cars may always leave the intersection, ignoring lights
 ClearIntersection ==
