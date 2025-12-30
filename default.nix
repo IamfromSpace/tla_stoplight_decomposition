@@ -1,20 +1,34 @@
 let
   pkgs = import ./pinned.nix;
 
+  # TODO: Work in progress improved pattern.  Still needs to handle possible
+  # TLAPS use, and it's outputing the file name with the full nix name for the
+  # CFG file, like spec-yss5p3sg0l684v9w5inl23p8yxy9369s-config.log for
+  # spec.tla and config.cfg.
   intersection_abstract =
     pkgs.runCommand
       "intersection_abstract"
       {
         buildInputs = [ pkgs.tlaplus ];
+        TLC_CHECK_MODULE_NAME = "intersection_abstract";
+        TLC_CHECK_CFG = ./intersection_abstract.cfg;
+        TLC_CHECK_MODULES =
+          # We still want a minimal file set, for efficient building.
+          # Otherwise, any file changed triggers a re-build
+          pkgs.lib.fileset.toSource {
+            root = ./.;
+            fileset = ./intersection_abstract.tla;
+          };
       }
       ''
       set -euo pipefail
 
-      SPEC=intersection_abstract.tla
+      # TODO: This includes the nix hash still at the front, like yss5p3sg0l684v9w5inl23p8yxy9369s-name
+      CFG_FILE_NAME=$(basename "$TLC_CHECK_CFG" .cfg);
       WORKERS=$(( $(nproc) * 3 / 4 ))
-      cp -L ${./intersection_abstract.tla} $SPEC
+      cp -L $TLC_CHECK_MODULES/* .
       mkdir -p $out/share
-      tlc $SPEC -config ${./intersection_abstract.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
+      tlc $TLC_CHECK_MODULE_NAME.tla -config $TLC_CHECK_CFG -workers $WORKERS | tee $out/share/$TLC_CHECK_MODULE_NAME-$CFG_FILE_NAME.log
       '';
 
   intersection_stopsign =
