@@ -128,6 +128,26 @@ let
       tlc $SPEC -config ${./intersection_stoplight_in_environment.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
       '';
 
+  intersection_stoplight_in_environment_trace =
+    pkgs.runCommand
+      "intersection_stoplight_in_environment_trace"
+      {
+        buildInputs = [ pkgs.tlaplus ];
+      }
+      ''
+      set -euo pipefail
+
+      SPEC=intersection_stoplight_in_environment_trace.tla
+      WORKERS=$(( $(nproc) * 3 / 4 ))
+      cp -L ${./intersection_stoplight.tla} intersection_stoplight.tla
+      cp -L ${./intersection_stoplight_environment.tla} intersection_stoplight_environment.tla
+      cp -L ${./intersection_stoplight_abstract.tla} intersection_stoplight_abstract.tla
+      cp -L ${./intersection_stoplight_in_environment.tla} intersection_stoplight_in_environment.tla
+      cp -L ${./intersection_stoplight_in_environment_trace.tla} $SPEC
+      mkdir -p $out/share
+      tlc $SPEC -config ${./intersection_stoplight_in_environment_trace.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
+      '';
+
   intersection_stoplight_environment_plus =
     pkgs.runCommand
       "intersection_stoplight_environment_plus"
@@ -176,6 +196,7 @@ in
           intersection_stoplight_composite_trace
           intersection_stoplight_composite_env
           intersection_stoplight_in_environment
+          intersection_stoplight_in_environment_trace
           intersection_stoplight_environment_plus
           intersection_stoplight_in_environment_plus
         ];
