@@ -186,6 +186,26 @@ let
       mkdir -p $out/share
       tlc $SPEC -config ${./intersection_stoplight_in_environment_plus.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
       '';
+
+  intersection_stoplight_abstract_in_environment_graph =
+    pkgs.runCommand
+      "intersection_stoplight_abstract_in_environment_graph"
+      {
+        buildInputs = [ pkgs.tlaplus pkgs.graphviz ];
+      }
+      ''
+      set -euo pipefail
+
+      SPEC=intersection_stoplight_abstract_in_environment.tla
+      WORKERS=$(( $(nproc) * 3 / 4 ))
+      cp -L ${./intersection_stoplight_abstract.tla} intersection_stoplight_abstract.tla
+      cp -L ${./intersection_stoplight_environment.tla} intersection_stoplight_environment.tla
+      cp -L ${./intersection_stoplight_abstract_in_environment.tla} $SPEC
+      mkdir -p $out/share
+
+      tlc $SPEC -config ${./intersection_stoplight_abstract_in_environment.cfg} -workers $WORKERS -dump dot,colorize state_graph.dot | tee $out/share/$SPEC.log
+      dot -Tpng state_graph.dot -o $out/share/$SPEC-state_graph.png
+      '';
 in
   pkgs.symlinkJoin
     { name = "all_specs";
@@ -199,5 +219,6 @@ in
           intersection_stoplight_in_environment_trace
           intersection_stoplight_environment_plus
           intersection_stoplight_in_environment_plus
+          intersection_stoplight_abstract_in_environment_graph
         ];
     }
