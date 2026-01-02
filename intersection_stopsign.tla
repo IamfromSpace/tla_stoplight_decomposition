@@ -92,6 +92,4 @@ Abstract == INSTANCE intersection_abstract
 (* Refinement property: our spec implements the abstract spec *)
 ImplementsAbstract == Abstract!Spec
 
-THEOREM Refinement == Spec => ImplementsAbstract
-
 ====
