@@ -55,6 +55,15 @@ Init ==
     /\ StoplightCtrl!Init
 
 Next ==
+    (* Non-interleaving part, components can act simultaneously (except the
+    lanes as this is not allowed by our abstract definition).  This part is what
+    causes us to need the environment_plus part of our proof.  As such, there's
+    not really a good reason to do this on purpose.  But we explore the more
+    general case, where non-interleaving may be preferrable for some reason. *)
+    \/ NSLane!Next /\ StoplightCtrl!Next /\ UNCHANGED EWLaneVars
+    \/ EWLane!Next /\ StoplightCtrl!Next /\ UNCHANGED NSLaneVars
+
+    \* Interleaving part, only one component can act per step
     \/ NSLane!Next /\ UNCHANGED <<EWLaneVars, StoplightCtrlVars>>
     \/ EWLane!Next /\ UNCHANGED <<NSLaneVars, StoplightCtrlVars>>
     \/ StoplightCtrl!Next /\ UNCHANGED <<NSLaneVars, EWLaneVars>>
@@ -65,8 +74,8 @@ Fairness ==
     /\ StoplightCtrl!Fairness
 
 (* NOTE: These are equivalent to `NSLane!Spec /\ EWLane!Spec /\
-StoplightCtrl!Spec` (ignoring interleaving), but TLC cannot handle more than
-one conjunct of the form `[][Next]_v` in the specification it checks *)
+StoplightCtrl!Spec`, but TLC cannot handle more than one conjunct of the form
+`[][Next]_v` in the specification it checks *)
 SpecClosed == Init /\ [][Next]_vars
 Spec == SpecClosed /\ Fairness
 
