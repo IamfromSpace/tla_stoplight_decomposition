@@ -1,4 +1,4 @@
----- MODULE abstract ----
+---- MODULE star_intersection_abstract ----
 
 (* An abstract description of an intersection between N one way streets in a
 star pattern.  All streets cross all others.

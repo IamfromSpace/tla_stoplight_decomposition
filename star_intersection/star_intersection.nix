@@ -13,11 +13,11 @@ let
       ''
       set -euo pipefail
 
-      SPEC=abstract.tla
+      SPEC=star_intersection_abstract.tla
       WORKERS=$(( $(nproc) * 3 / 4 ))
-      cp -L ${./abstract.tla} $SPEC
+      cp -L ${./star_intersection_abstract.tla} $SPEC
       mkdir -p $out/share
-      tlc $SPEC -config ${./abstract.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
+      tlc $SPEC -config ${./star_intersection_abstract.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
       '';
 
 in
