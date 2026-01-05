@@ -68,4 +68,14 @@ Abstract == INSTANCE star_intersection_abstract
 
 ImplementsAbstract == Abstract!Spec
 
+\* Pick an arbitrary direction to check the environment against
+LOCAL SomeDirection == CHOOSE d \in Directions : TRUE
+
+LaneEnvironment == INSTANCE star_intersection_stoplight_lane_environment
+    WITH is_green <- is_green[SomeDirection],
+         are_other_lanes_clear <- \A d \in (Directions \ {SomeDirection}) : ~inside[d],
+         is_lane_clear <- ~inside[SomeDirection]
+
+ClosedSpecRefinesLaneEnvironment == LaneEnvironment!Spec
+
 ====
