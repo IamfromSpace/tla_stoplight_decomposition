@@ -4,18 +4,15 @@
    This module controls traffic lights for N directions with the following behavior:
 
    - All lights start red
-   - The stoplight cycles through directions in a ring pattern
-   - When the intersection is clear, the controller turns green the next light
-     in the ring after the last green light
+   - When the intersection is clear, and all lights are red, the controller
+     turns a light green
    - At any point, a green light can turn red
+   - No lanes are eternally ignored (but we don't say specifically how this is
+     accomplished)
 
    The is_intersection_clear variable is environmental - it's provided by
    the composition context and indicates whether the intersection is safe
-   to allow another car to enter.
-
-   This module enforces:
-   - At most one light is green at a time (mutual exclusion)
-   - Lights cycle through directions in a deterministic ring order *)
+   to allow another car to enter. *)
 
 EXTENDS Naturals, FiniteSets, Sequences
 
@@ -24,50 +21,33 @@ CONSTANTS
 
 VARIABLES
     is_green,
-    last_green_direction,
     is_intersection_clear
 
-\* Grabbed from community modules
-LOCAL IsInjective(f) == \A a,b \in DOMAIN f : f[a] = f[b] => a = b
-LOCAL SetToSeq(S) ==
-  CHOOSE f \in [1..Cardinality(S) -> S] : IsInjective(f)
-
-\* Helper to get the next direction in the ring
-\* We need a deterministic ordering, so we'll use a sequence
-LOCAL DirectionSeq == SetToSeq(Directions)
-
-LOCAL NextDirection(direction) ==
-    LET idx == CHOOSE i \in 1..Cardinality(Directions) : DirectionSeq[i] = direction
-        next_idx == IF idx = Cardinality(Directions) THEN 1 ELSE idx + 1
-    IN DirectionSeq[next_idx]
-
 \* vars don't act like vars when imported as an instance, so we keep them local
-LOCAL vars == <<is_green, last_green_direction>>
+LOCAL vars == <<is_green>>
 
 Init ==
     /\ is_green = [ d \in Directions |-> FALSE ]
-    /\ last_green_direction \in Directions
 
-\* Turn a light green when intersection is clear and it's that direction's turn
-TurnGreen ==
+\* Turn a light green when intersection is clear
+TurnGreen(direction) ==
     /\ is_intersection_clear
-    /\ ~is_green[last_green_direction]
-    /\ last_green_direction' = NextDirection(last_green_direction)
-    /\ is_green' = [ is_green EXCEPT ![last_green_direction'] = TRUE ]
+    /\ \A d \in Directions : ~is_green[d]
+    /\ is_green' = [ is_green EXCEPT ![direction] = TRUE ]
 
 \* Turn a light red (we leave why unspecified)
 TurnRed ==
     \E direction \in Directions :
         /\ is_green[direction]
         /\ is_green' = [ is_green EXCEPT ![direction] = FALSE ]
-        /\ UNCHANGED last_green_direction
 
 Next ==
-    \/ TurnGreen
+    \/ \E direction \in Directions : TurnGreen(direction)
     \/ TurnRed
 
 Fairness ==
-    WF_vars(Next)
+    /\ \A direction \in Directions : SF_vars(TurnGreen(direction))
+    /\ WF_vars(TurnRed)
 
 SpecClosed == Init /\ [][Next]_vars
 Spec == SpecClosed /\ Fairness

@@ -21,8 +21,7 @@ VARIABLES
     outside,
 
     \* Stoplight controller vars
-    is_green,
-    last_green_direction
+    is_green
 
 Lanes == INSTANCE star_intersection_stoplight_n_lanes_abstract
     WITH inside <- inside,
@@ -32,14 +31,13 @@ Lanes == INSTANCE star_intersection_stoplight_n_lanes_abstract
 StoplightCtrl == INSTANCE star_intersection_stoplight
     WITH Directions <- Directions,
          is_green <- is_green,
-         last_green_direction <- last_green_direction,
          is_intersection_clear <- \A d \in Directions : ~inside[d]
 
 (* NOTE: We need to redefine instance variables, even though Lanes!vars and
 others are available to us, because otherwise TLC doesn't recognize them as
 variables that can be primed, they are just treated as regular values. *)
 LanesVars == <<inside, outside>>
-StoplightCtrlVars == <<is_green, last_green_direction>>
+StoplightCtrlVars == <<is_green>>
 
 \* vars don't act like vars when imported as an instance, so we keep them local
 LOCAL vars == <<LanesVars, StoplightCtrlVars>>
