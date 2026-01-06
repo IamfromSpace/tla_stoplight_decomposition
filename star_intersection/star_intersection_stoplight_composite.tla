@@ -47,6 +47,13 @@ Init ==
     /\ StoplightCtrl!Init
 
 Next ==
+    (* Non-interleaving part; both components act simultaneously.  Notably, we
+    don't really have a good reason to include this intentionally, as
+    non-interleaving specifications are mostly just more complicated.  We show
+    the more difficult case as an example, should non-interleaving be
+    preferrable for some reason. *)
+    \/ Lanes!Next /\ StoplightCtrl!Next
+
     \* Interleaving part, only one component can act per step
     \/ Lanes!Next /\ UNCHANGED StoplightCtrlVars
     \/ StoplightCtrl!Next /\ UNCHANGED LanesVars
@@ -55,9 +62,9 @@ Fairness ==
     /\ Lanes!Fairness
     /\ StoplightCtrl!Fairness
 
-(* NOTE: These are equivalent to `Lanes!Spec /\ StoplightCtrl!Spec` (ignoring
-interleaving), but TLC cannot handle more than one conjunct of the form
-`[][Next]_v` in the specification it checks *)
+(* NOTE: These are equivalent to `Lanes!Spec /\ StoplightCtrl!Spec`, but TLC
+cannot handle more than one conjunct of the form `[][Next]_v` in the
+specification it checks *)
 SpecClosed == Init /\ [][Next]_vars
 Spec == SpecClosed /\ Fairness
 
