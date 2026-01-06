@@ -17,8 +17,7 @@ VARIABLES
     inside_brake,
 
     \* Environment variables
-    is_green,
-    are_other_lanes_clear \* TODO: I'm not sure we even need this var!
+    is_green
 
 Lane == INSTANCE star_intersection_stoplight_lane_refined
 Environment ==
@@ -27,7 +26,7 @@ Environment ==
 
 LaneVars == <<outside_exists, outside_moving, outside_accelerator, outside_brake,
                      inside_exists, inside_moving, inside_accelerator, inside_brake>>
-EnvironmentVars == <<is_green, are_other_lanes_clear>>
+EnvironmentVars == <<is_green>>
 
 LOCAL vars == <<LaneVars, EnvironmentVars>>
 
