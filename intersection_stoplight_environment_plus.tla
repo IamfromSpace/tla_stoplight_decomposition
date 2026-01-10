@@ -41,6 +41,7 @@ LOCAL vars == <<s, is_intersection_clear>>
 
 Spec == Init /\ [][Next]_vars
 
+\* TODO: These proofs are likely bogus, due to this bug: https://github.com/tlaplus/tlapm/issues/139
 THEOREM ~Env!Init = NotEnvInit
     BY DEF Env!Init, NotEnvInit
 
