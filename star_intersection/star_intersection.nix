@@ -101,6 +101,27 @@ let
       tlc $SPEC -config ${./star_intersection_stoplight_lane_refined_in_environment_plus.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
       '';
 
+  star_intersection_stoplight_composite_trace =
+    runCommand
+      "star_intersection_stoplight_composite_trace"
+      {
+        buildInputs = [ tlaplus ];
+      }
+      ''
+      set -euo pipefail
+
+      SPEC=star_intersection_stoplight_composite_trace.tla
+      WORKERS=$(( $(nproc) * 3 / 4 ))
+      cp -L ${./star_intersection_stoplight_composite_trace.tla} $SPEC
+      cp -L ${./star_intersection_stoplight_composite.tla} star_intersection_stoplight_composite.tla
+      cp -L ${./star_intersection_abstract.tla} star_intersection_abstract.tla
+      cp -L ${./star_intersection_stoplight.tla} star_intersection_stoplight.tla
+      cp -L ${./star_intersection_stoplight_n_lanes_abstract.tla} star_intersection_stoplight_n_lanes_abstract.tla
+      cp -L ${./star_intersection_stoplight_lane_environment.tla} star_intersection_stoplight_lane_environment.tla
+      mkdir -p $out/share
+      tlc $SPEC -config ${./star_intersection_stoplight_composite_trace.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
+      '';
+
 in
   symlinkJoin
     { name = "all_specs";
@@ -110,5 +131,6 @@ in
           star_intersection_stoplight_composite_env
           star_intersection_stoplight_lane_refined_in_environment
           star_intersection_stoplight_lane_refined_in_environment_plus
+          star_intersection_stoplight_composite_trace
         ];
     }
