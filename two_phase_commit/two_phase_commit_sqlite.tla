@@ -4,21 +4,21 @@
    transaction: a sequence of statements that its client runs as
      BEGIN IMMEDIATE; <statements>; COMMIT;
    rolling back on any error.  That holds SQLite's one write lock throughout, so
-   the transaction is a single step here, and its reply holds the rows of its
-   final statement, a SELECT.  Requests in inbox name their sender, and replies
-   in outbox name their recipient.  A request may run any number of times, at
-   any time after it's sent, which is looser than SQLite: that runs it at most
-   once, before replying.
+   the transaction is a single step here, and its reply holds the rows its last
+   statement returned.  Requests in inbox name their sender, and replies in
+   outbox name their recipient.  A request may run any number of times, at any
+   time after it's sent, which is looser than SQLite: that runs it at most once,
+   before replying.
 
    The configuration this relies on:
      - each client has its own connection, on the same host as the database,
        which is on a local filesystem;
      - PRAGMA journal_mode = WAL and PRAGMA synchronous = FULL, so a commit
        survives a power loss;
-     - every table is STRICT with NOT NULL columns, so there's no type affinity
-       or NULL to model. *)
+     - every table is STRICT, with NOT NULL columns and a primary key, so there's
+       no type affinity, NULL or duplicate row to model. *)
 
-EXTENDS Sequences
+EXTENDS Sequences, TLC
 
 CONSTANTS
     \* Each table's columns and primary key, by name, such as
@@ -38,51 +38,55 @@ VARIABLES
 
 LOCAL vars == <<tables, outbox>>
 
+\* Each table maps primary keys to rows, so keys are unique by construction.
+Key(table, row) == [ column \in Schema[table].primary_key |-> row[column] ]
+
+LOCAL Range(map) == { map[key] : key \in DOMAIN map }
+
+\* Each row has its table's columns, and is stored under its own key.
 TypeOK ==
     /\ DOMAIN tables = DOMAIN Schema
     /\ \A table \in DOMAIN Schema :
-        \A row \in tables[table] : DOMAIN row = Schema[table].columns
-
-KeysUnique ==
-    \A table \in DOMAIN Schema :
-        \A a, b \in tables[table] :
-            (\A column \in Schema[table].primary_key : a[column] = b[column]) => a = b
+        \A key \in DOMAIN tables[table] :
+            /\ DOMAIN tables[table][key] = Schema[table].columns
+            /\ Key(table, tables[table][key]) = key
 
 Init ==
-    /\ tables = [ table \in DOMAIN Schema |-> {} ]
+    /\ tables = [ table \in DOMAIN Schema |-> << >> ]
     /\ outbox = {}
 
 \* SELECT * FROM <from> WHERE <column> = <value> AND ...
 Rows(db, select) ==
-    { row \in db[select.from] :
+    { row \in Range(db[select.from]) :
         \A column \in DOMAIN select.where : row[column] = select.where[column] }
 
 \* INSERT INTO <into> (<column>, ...) VALUES (<value>, ...) ON CONFLICT DO NOTHING
 InsertOrNothing(db, insert) ==
-    IF \E row \in db[insert.into] :
-            \A column \in Schema[insert.into].primary_key : row[column] = insert.values[column]
-    THEN db
-    ELSE [ db EXCEPT ![insert.into] = @ \cup { insert.values } ]
+    LET key == Key(insert.into, insert.values)
+    IN  IF key \in DOMAIN db[insert.into]
+        THEN db
+        ELSE [ db EXCEPT ![insert.into] = (key :> insert.values) @@ @ ]
 
+\* A statement's effect, and the rows it returns, which for an INSERT is none.
 \* Any other statement stops TLC, as does a table that's not in Schema.
 Execute(db, statement) ==
-    CASE statement.statement = Select -> db
+    CASE statement.statement = Select ->
+            [ tables |-> db, rows |-> Rows(db, statement) ]
       [] statement.statement = Insert /\ statement.on_conflict = DoNothing ->
-            InsertOrNothing(db, statement)
+            [ tables |-> InsertOrNothing(db, statement), rows |-> {} ]
 
+\* The tables after running statements in order, and the rows the last returned
 RECURSIVE Run(_, _)
 Run(db, statements) ==
-    IF statements = << >>
-    THEN db
-    ELSE Run(Execute(db, Head(statements)), Tail(statements))
-
-\* The rows of a transaction's final SELECT
-Result(db, statements) == Rows(Run(db, statements), statements[Len(statements)])
+    LET result == Execute(db, Head(statements))
+    IN  IF Tail(statements) = << >>
+        THEN result
+        ELSE Run(result.tables, Tail(statements))
 
 Process(request) ==
-    /\ tables' = Run(tables, request.sql)
-    /\ outbox' = outbox \cup
-        { [ recipient |-> request.sender, rows |-> Result(tables, request.sql) ] }
+    LET result == Run(tables, request.sql)
+    IN  /\ tables' = result.tables
+        /\ outbox' = outbox \cup { [ recipient |-> request.sender, rows |-> result.rows ] }
 
 Next == \E request \in inbox : Process(request)
 
