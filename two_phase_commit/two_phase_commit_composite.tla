@@ -92,4 +92,13 @@ TwoPhase == INSTANCE TwoPhase
 ImplementsTwoPhase == TwoPhase!TPSpec
 ImplementsTCommit == TwoPhase!TC!TCSpec
 
+\* Any resource manager will do, by symmetry
+LOCAL SomeRM == CHOOSE rm \in ResourceManagers : TRUE
+
+RMEnvironment == INSTANCE two_phase_commit_resource_manager_environment
+    WITH inbox <- tm_outbox[SomeRM],
+         outbox <- rm_outbox[SomeRM]
+
+ClosedSpecRefinesRMEnvironment == RMEnvironment!Spec
+
 ====
