@@ -101,4 +101,9 @@ RMEnvironment == INSTANCE two_phase_commit_resource_manager_environment
 
 ClosedSpecRefinesRMEnvironment == RMEnvironment!Spec
 
+TMEnvironment == INSTANCE two_phase_commit_transaction_manager_environment
+    WITH inbox <- rm_outbox
+
+ClosedSpecRefinesTMEnvironment == TMEnvironment!Spec
+
 ====

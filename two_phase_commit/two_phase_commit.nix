@@ -32,6 +32,7 @@ let
       cp -L ${./two_phase_commit_resource_managers_abstract.tla} two_phase_commit_resource_managers_abstract.tla
       cp -L ${./two_phase_commit_transaction_manager_abstract.tla} two_phase_commit_transaction_manager_abstract.tla
       cp -L ${./two_phase_commit_resource_manager_environment.tla} two_phase_commit_resource_manager_environment.tla
+      cp -L ${./two_phase_commit_transaction_manager_environment.tla} two_phase_commit_transaction_manager_environment.tla
       cp -L ${two_phase} TwoPhase.tla
       cp -L ${t_commit} TCommit.tla
       mkdir -p $out/share
@@ -53,6 +54,7 @@ let
       cp -L ${./two_phase_commit_resource_managers_abstract.tla} two_phase_commit_resource_managers_abstract.tla
       cp -L ${./two_phase_commit_transaction_manager_abstract.tla} two_phase_commit_transaction_manager_abstract.tla
       cp -L ${./two_phase_commit_resource_manager_environment.tla} two_phase_commit_resource_manager_environment.tla
+      cp -L ${./two_phase_commit_transaction_manager_environment.tla} two_phase_commit_transaction_manager_environment.tla
       cp -L ${two_phase} TwoPhase.tla
       cp -L ${t_commit} TCommit.tla
       mkdir -p $out/share
