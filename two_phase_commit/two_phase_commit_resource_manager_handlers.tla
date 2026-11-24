@@ -27,8 +27,6 @@ CONSTANTS
     \* Database replies
     None,
     InProgress,
-    Success,
-    Fail,
     Conflicting,
 
     \* Transaction manager messages
@@ -92,14 +90,8 @@ Refuse(handler) ==
     /\ outbox' = [ outbox EXCEPT ![handler] =
             @ \cup { [ recipient |-> Database, request |-> RefuseReq ] } ]
 
-AlreadyDecided(handler) ==
-    /\ state[handler] = Preparing
-    /\ \E reply \in inbox[handler] :
-        /\ reply.sender = Database
-        /\ reply.transaction \in { Success, Fail }
-    /\ state' = [ state EXCEPT ![handler] = Idle ]
-    /\ UNCHANGED outbox
-
+\* Crash also covers a prepare whose reply shows the transaction is already
+\* decided: there's nothing left to do, so the handler just stops.
 Crash(handler) ==
     /\ state[handler] # Idle
     /\ state' = [ state EXCEPT ![handler] = Idle ]
@@ -112,7 +104,6 @@ Next ==
         \/ Abort(handler)
         \/ Vote(handler)
         \/ Refuse(handler)
-        \/ AlreadyDecided(handler)
         \/ Crash(handler)
 
 Spec == Init /\ [][Next]_vars
