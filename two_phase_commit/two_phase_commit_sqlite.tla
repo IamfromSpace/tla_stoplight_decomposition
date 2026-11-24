@@ -7,8 +7,9 @@
    the transaction is a single step here, and its reply holds the rows its last
    statement returned.  Requests in inbox name their sender, and replies in
    outbox name their recipient.  A request may run any number of times, at any
-   time after it's sent, which is looser than SQLite: that runs it at most once,
-   before replying.
+   time after it's sent: SQLite runs a transaction at most once per connection,
+   but a client that retries on a new connection can't rule out that an earlier
+   attempt applied, or still will.
 
    The configuration this relies on:
      - each client has its own connection, on the same host as the database,
