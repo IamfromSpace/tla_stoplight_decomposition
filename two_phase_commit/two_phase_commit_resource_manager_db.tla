@@ -16,7 +16,8 @@ CONSTANTS
     Success,
     Fail,
 
-    \* Resource states
+    \* Resource states.  Conflicting covers both a lock held by another
+    \* transaction and data our change can't apply to.
     Compatible,
     Conflicting,
     Locked,
@@ -73,6 +74,11 @@ Prepare(handler) ==
        ELSE UNCHANGED <<transaction, resource>>
     /\ Reply(handler)
 
+\* Under snapshot isolation, a failed Prepare writes nothing, so the conflict it
+\* reports may be stale and a valid transaction refused: safe, but surprising,
+\* and a liveness risk.  Prepare here always sees current state, so snapshot
+\* isolation only implements this spec if we explicitly allow stale reads.
+\*
 \* INSERT INTO rm_txns (txn_id, status) VALUES (:txn, 'fail')
 \*   ON CONFLICT DO NOTHING;
 Refuse(handler) ==
@@ -91,7 +97,7 @@ Commit(handler) ==
     /\ Requested(handler, CommitReq)
     /\ IF transaction = InProgress
        THEN /\ transaction' = Success
-            /\ resource' = Compatible
+            /\ resource' \in { Compatible, Conflicting }
        ELSE UNCHANGED <<transaction, resource>>
     /\ Reply(handler)
 
