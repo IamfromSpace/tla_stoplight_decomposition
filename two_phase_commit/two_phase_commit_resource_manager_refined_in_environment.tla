@@ -97,4 +97,15 @@ RMAbstract == INSTANCE two_phase_commit_resource_manager_abstract WITH
 \* Safety only, for now
 ImplementsAbstractRM == RMAbstract!SpecClosed
 
+\* Any handler will do, by symmetry
+LOCAL SomeHandler == CHOOSE handler \in Handlers : TRUE
+
+HandlerEnvironment == INSTANCE two_phase_commit_resource_manager_handler_environment WITH
+    inbox <- RM!HandlerInbox[SomeHandler],
+    outbox <- handler_outbox[SomeHandler],
+    transaction <- db_transaction,
+    resource <- db_resource
+
+ClosedSpecRefinesHandlerEnvironment == HandlerEnvironment!Spec
+
 ====

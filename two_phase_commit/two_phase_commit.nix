@@ -77,6 +77,7 @@ let
       cp -L ${./two_phase_commit_resource_manager_handlers.tla} two_phase_commit_resource_manager_handlers.tla
       cp -L ${./two_phase_commit_resource_manager_db.tla} two_phase_commit_resource_manager_db.tla
       cp -L ${./two_phase_commit_resource_manager_environment.tla} two_phase_commit_resource_manager_environment.tla
+      cp -L ${./two_phase_commit_resource_manager_handler_environment.tla} two_phase_commit_resource_manager_handler_environment.tla
       cp -L ${./two_phase_commit_resource_manager_abstract.tla} two_phase_commit_resource_manager_abstract.tla
       cp -L ${./two_phase_commit_resource_managers_abstract.tla} two_phase_commit_resource_managers_abstract.tla
       mkdir -p $out/share
