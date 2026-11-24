@@ -93,6 +93,7 @@ let
       cp -L ${./two_phase_commit_transaction_manager_handlers.tla} two_phase_commit_transaction_manager_handlers.tla
       cp -L ${./two_phase_commit_sqlite.tla} two_phase_commit_sqlite.tla
       cp -L ${./two_phase_commit_transaction_manager_environment.tla} two_phase_commit_transaction_manager_environment.tla
+      cp -L ${./two_phase_commit_transaction_manager_handler_environment.tla} two_phase_commit_transaction_manager_handler_environment.tla
       cp -L ${./two_phase_commit_transaction_manager_abstract.tla} two_phase_commit_transaction_manager_abstract.tla
       mkdir -p $out/share
       tlc $SPEC -config ${./two_phase_commit_transaction_manager_refined_in_environment.cfg} -workers $WORKERS | tee $out/share/$SPEC.log

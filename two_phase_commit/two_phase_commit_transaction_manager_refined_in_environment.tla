@@ -103,4 +103,14 @@ TMAbstract == INSTANCE two_phase_commit_transaction_manager_abstract WITH
 \* Safety only, for now
 ImplementsAbstractTM == TMAbstract!SpecClosed
 
+\* Any handler will do, by symmetry
+LOCAL SomeHandler == CHOOSE handler \in Handlers : TRUE
+
+HandlerEnvironment == INSTANCE two_phase_commit_transaction_manager_handler_environment WITH
+    inbox <- TM!HandlerInbox[SomeHandler],
+    outbox <- handler_outbox[SomeHandler],
+    decision <- Decision
+
+ClosedSpecRefinesHandlerEnvironment == HandlerEnvironment!Spec
+
 ====
