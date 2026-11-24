@@ -28,17 +28,21 @@ CONSTANTS
     \* Parties
     Database,
 
-    \* SQL
+    \* SQL keywords
     Insert,
     Select,
     DoNothing,
-    Decisions,
+
+    \* The transaction's id
     Txn,
 
     \* Resource manager messages
     PreparedMsg,
     CommitMsg,
     AbortMsg
+
+\* Keywords are model values, but names and ids are strings, as in SQL.
+ASSUME Txn \in STRING
 
 VARIABLES
     state,
@@ -50,13 +54,13 @@ LOCAL vars == <<state, prepared, outbox>>
 
 \* SELECT * FROM decisions WHERE txn_id = :txn;
 SelectDecision ==
-    [ statement |-> Select, from |-> Decisions, where |-> [ txn_id |-> Txn ] ]
+    [ statement |-> Select, from |-> "decisions", where |-> [ txn_id |-> Txn ] ]
 
 \* INSERT INTO decisions (txn_id, decision) VALUES (:txn, :decision)
 \*   ON CONFLICT DO NOTHING;
 InsertDecision(decision) ==
     [ statement |-> Insert,
-      into |-> Decisions,
+      into |-> "decisions",
       values |-> [ txn_id |-> Txn, decision |-> decision ],
       on_conflict |-> DoNothing ]
 
