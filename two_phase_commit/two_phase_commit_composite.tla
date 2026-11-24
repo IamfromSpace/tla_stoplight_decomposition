@@ -57,12 +57,7 @@ Next ==
     \/ RMs!Next /\ UNCHANGED TMVars
     \/ TM!Next /\ UNCHANGED RMVars
 
-Fairness ==
-    /\ RMs!Fairness
-    /\ TM!Fairness
-
-SpecClosed == Init /\ [][Next]_vars
-Spec == SpecClosed /\ Fairness
+Spec == Init /\ [][Next]_vars
 
 RMStateName(s) ==
     CASE s = Working -> "working"

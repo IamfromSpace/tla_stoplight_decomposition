@@ -28,7 +28,6 @@ OneFromN == INSTANCE two_phase_commit_resource_managers_abstract WITH
     inbox <- [ rm \in ResourceManagers |-> inbox ],
     outbox <- [ rm \in ResourceManagers |-> outbox ]
 
-SpecClosed == OneFromN!SpecClosed
 Spec == OneFromN!Spec
 
 ====

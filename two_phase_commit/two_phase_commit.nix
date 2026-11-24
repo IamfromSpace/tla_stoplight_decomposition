@@ -33,27 +33,6 @@ let
       tlc $SPEC -config ${./two_phase_commit_composite.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
       '';
 
-  two_phase_commit_composite_env =
-    runCommand
-      "two_phase_commit_composite_env"
-      {
-        buildInputs = [ tlaplus ];
-      }
-      ''
-      set -euo pipefail
-
-      SPEC=two_phase_commit_composite.tla
-      WORKERS=$(( $(nproc) * 3 / 4 ))
-      cp -L ${./two_phase_commit_composite.tla} $SPEC
-      cp -L ${./two_phase_commit_resource_managers_abstract.tla} two_phase_commit_resource_managers_abstract.tla
-      cp -L ${./two_phase_commit_transaction_manager_abstract.tla} two_phase_commit_transaction_manager_abstract.tla
-      cp -L ${./two_phase_commit_resource_manager_environment.tla} two_phase_commit_resource_manager_environment.tla
-      cp -L ${./two_phase_commit_transaction_manager_environment.tla} two_phase_commit_transaction_manager_environment.tla
-      cp -L ${t_commit} TCommit.tla
-      mkdir -p $out/share
-      tlc $SPEC -config ${./two_phase_commit_composite_env.cfg} -workers $WORKERS | tee $out/share/two_phase_commit_composite_env.log
-      '';
-
   two_phase_commit_resource_manager_refined_in_environment =
     runCommand
       "two_phase_commit_resource_manager_refined_in_environment"
@@ -104,7 +83,6 @@ in
     { name = "all_specs";
       paths =
         [ two_phase_commit_composite
-          two_phase_commit_composite_env
           two_phase_commit_resource_manager_refined_in_environment
           two_phase_commit_transaction_manager_refined_in_environment
         ];

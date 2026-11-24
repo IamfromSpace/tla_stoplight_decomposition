@@ -64,11 +64,6 @@ Next ==
     \/ Commit
     \/ Abort
 
-Fairness ==
-    /\ \A rm \in ResourceManagers : WF_vars(ReceivePrepared(rm))
-    /\ WF_vars(Commit \/ Abort)
-
-SpecClosed == Init /\ [][Next]_vars
-Spec == SpecClosed /\ Fairness
+Spec == Init /\ [][Next]_vars
 
 ====

@@ -94,8 +94,7 @@ RMAbstract == INSTANCE two_phase_commit_resource_manager_abstract WITH
     state <- AbstractState,
     outbox <- AbstractOutbox
 
-\* Safety only, for now
-ImplementsAbstractRM == RMAbstract!SpecClosed
+ImplementsAbstractRM == RMAbstract!Spec
 
 \* Any handler will do, by symmetry
 LOCAL SomeHandler == CHOOSE handler \in Handlers : TRUE

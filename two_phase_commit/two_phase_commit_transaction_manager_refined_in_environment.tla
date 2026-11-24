@@ -100,8 +100,7 @@ TMAbstract == INSTANCE two_phase_commit_transaction_manager_abstract WITH
     prepared <- AbstractPrepared,
     outbox <- AbstractOutbox
 
-\* Safety only, for now
-ImplementsAbstractTM == TMAbstract!SpecClosed
+ImplementsAbstractTM == TMAbstract!Spec
 
 \* Any handler will do, by symmetry
 LOCAL SomeHandler == CHOOSE handler \in Handlers : TRUE
