@@ -84,6 +84,27 @@ let
       tlc $SPEC -config ${./two_phase_commit_resource_manager_refined_in_environment.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
       '';
 
+  two_phase_commit_transaction_manager_refined_in_environment =
+    runCommand
+      "two_phase_commit_transaction_manager_refined_in_environment"
+      {
+        buildInputs = [ tlaplus ];
+      }
+      ''
+      set -euo pipefail
+
+      SPEC=two_phase_commit_transaction_manager_refined_in_environment.tla
+      WORKERS=$(( $(nproc) * 3 / 4 ))
+      cp -L ${./two_phase_commit_transaction_manager_refined_in_environment.tla} $SPEC
+      cp -L ${./two_phase_commit_transaction_manager_refined.tla} two_phase_commit_transaction_manager_refined.tla
+      cp -L ${./two_phase_commit_transaction_manager_handlers.tla} two_phase_commit_transaction_manager_handlers.tla
+      cp -L ${./two_phase_commit_sqlite.tla} two_phase_commit_sqlite.tla
+      cp -L ${./two_phase_commit_transaction_manager_environment.tla} two_phase_commit_transaction_manager_environment.tla
+      cp -L ${./two_phase_commit_transaction_manager_abstract.tla} two_phase_commit_transaction_manager_abstract.tla
+      mkdir -p $out/share
+      tlc $SPEC -config ${./two_phase_commit_transaction_manager_refined_in_environment.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
+      '';
+
 in
   symlinkJoin
     { name = "all_specs";
@@ -91,5 +112,6 @@ in
         [ two_phase_commit_composite
           two_phase_commit_composite_env
           two_phase_commit_resource_manager_refined_in_environment
+          two_phase_commit_transaction_manager_refined_in_environment
         ];
     }
