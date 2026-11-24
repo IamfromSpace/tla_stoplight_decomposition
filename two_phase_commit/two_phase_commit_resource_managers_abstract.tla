@@ -1,8 +1,9 @@
 ---- MODULE two_phase_commit_resource_managers_abstract ----
 
 (* The resource managers of two-phase commit, as a group.  inbox belongs to the
-   environment.  Decisions that don't fit a manager's state are ignored, so the
-   environment may send anything. *)
+   environment.  Once asked to prepare, a manager either prepares or refuses.
+   Messages that don't fit a manager's state are ignored, so the environment may
+   send anything. *)
 
 CONSTANTS
     ResourceManagers,
@@ -14,7 +15,9 @@ CONSTANTS
     Aborted,
 
     \* Messages
+    PrepareMsg,
     PreparedMsg,
+    RefusedMsg,
     CommitMsg,
     AbortMsg
 
@@ -27,21 +30,23 @@ LOCAL vars == <<state, outbox>>
 
 TypeOK ==
     /\ state \in [ ResourceManagers -> { Working, Prepared, Committed, Aborted } ]
-    /\ outbox \in [ ResourceManagers -> SUBSET { PreparedMsg } ]
+    /\ outbox \in [ ResourceManagers -> SUBSET { PreparedMsg, RefusedMsg } ]
 
 Init ==
     /\ state = [ rm \in ResourceManagers |-> Working ]
     /\ outbox = [ rm \in ResourceManagers |-> {} ]
 
 Prepare(rm) ==
+    /\ PrepareMsg \in inbox[rm]
     /\ state[rm] = Working
     /\ state' = [ state EXCEPT ![rm] = Prepared ]
     /\ outbox' = [ outbox EXCEPT ![rm] = @ \cup { PreparedMsg } ]
 
-ChooseToAbort(rm) ==
+Refuse(rm) ==
+    /\ PrepareMsg \in inbox[rm]
     /\ state[rm] = Working
     /\ state' = [ state EXCEPT ![rm] = Aborted ]
-    /\ UNCHANGED outbox
+    /\ outbox' = [ outbox EXCEPT ![rm] = @ \cup { RefusedMsg } ]
 
 ReceiveCommit(rm) ==
     /\ CommitMsg \in inbox[rm]
@@ -58,7 +63,7 @@ ReceiveAbort(rm) ==
 Next ==
     \E rm \in ResourceManagers :
         \/ Prepare(rm)
-        \/ ChooseToAbort(rm)
+        \/ Refuse(rm)
         \/ ReceiveCommit(rm)
         \/ ReceiveAbort(rm)
 

@@ -25,6 +25,7 @@ CONSTANTS
     InProgress,
     Success,
     Fail,
+    Refused,
 
     \* Resource states
     Compatible,
@@ -38,7 +39,9 @@ CONSTANTS
     Aborted,
 
     \* Transaction manager messages
+    PrepareMsg,
     PreparedMsg,
+    RefusedMsg,
     CommitMsg,
     AbortMsg
 
@@ -80,15 +83,16 @@ AbstractState ==
       [] db_transaction = InProgress -> Prepared
       [] db_transaction = Success -> Committed
       [] db_transaction = Fail -> Aborted
+      [] db_transaction = Refused -> Aborted
 
-\* A vote counts as sent once a database reply records the prepare, so the
-\* handler's own vote is a stutter, unless it's bogus.  The transaction manager
-\* can't tell this from a slow delivery, since it never acts on a missing vote.
+\* A vote or refusal counts as sent once a database reply records it, so the
+\* handler's own message is a stutter, unless it's bogus.  The transaction
+\* manager can't tell this from a slow delivery, since it never acts on a
+\* missing message.
 AbstractOutbox ==
     RM!outbox \cup
-        (IF \E reply \in db_outbox : reply.transaction = InProgress
-         THEN { PreparedMsg }
-         ELSE {})
+        { IF reply.transaction = InProgress THEN PreparedMsg ELSE RefusedMsg :
+            reply \in { reply \in db_outbox : reply.transaction \in { InProgress, Refused } } }
 
 RMAbstract == INSTANCE two_phase_commit_resource_manager_abstract WITH
     state <- AbstractState,

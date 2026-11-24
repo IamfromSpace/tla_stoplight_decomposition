@@ -1,9 +1,10 @@
 ---- MODULE two_phase_commit_transaction_manager_abstract ----
 
 (* The transaction manager of two-phase commit.  inbox belongs to the
-   environment, which may send anything.  The manager remembers votes from its
-   inbox, and may forget any of them at any time, but only commits while it
-   remembers them all. *)
+   environment, which may send anything.  The manager asks resource managers to
+   prepare at any time, since a late request does no harm.  It remembers votes
+   from its inbox, and may forget any of them at any time, but only commits
+   while it remembers them all.  It aborts on a refusal, or when it times out. *)
 
 CONSTANTS
     ResourceManagers,
@@ -14,7 +15,9 @@ CONSTANTS
     Aborted,
 
     \* Messages
+    PrepareMsg,
     PreparedMsg,
+    RefusedMsg,
     CommitMsg,
     AbortMsg
 
@@ -29,12 +32,16 @@ LOCAL vars == <<state, prepared, outbox>>
 TypeOK ==
     /\ state \in { Undecided, Committed, Aborted }
     /\ prepared \subseteq ResourceManagers
-    /\ outbox \in [ ResourceManagers -> SUBSET { CommitMsg, AbortMsg } ]
+    /\ outbox \in [ ResourceManagers -> SUBSET { PrepareMsg, CommitMsg, AbortMsg } ]
 
 Init ==
     /\ state = Undecided
     /\ prepared = {}
     /\ outbox = [ rm \in ResourceManagers |-> {} ]
+
+RequestPrepare(rm) ==
+    /\ outbox' = [ outbox EXCEPT ![rm] = @ \cup { PrepareMsg } ]
+    /\ UNCHANGED <<state, prepared>>
 
 ReceivePrepared(rm) ==
     /\ PreparedMsg \in inbox[rm]
@@ -54,15 +61,25 @@ Commit ==
 
 Abort ==
     /\ state = Undecided
+    /\ \E rm \in ResourceManagers : RefusedMsg \in inbox[rm]
+    /\ state' = Aborted
+    /\ outbox' = [ rm \in ResourceManagers |-> outbox[rm] \cup { AbortMsg } ]
+    /\ UNCHANGED prepared
+
+Timeout ==
+    /\ state = Undecided
     /\ state' = Aborted
     /\ outbox' = [ rm \in ResourceManagers |-> outbox[rm] \cup { AbortMsg } ]
     /\ UNCHANGED prepared
 
 Next ==
-    \/ \E rm \in ResourceManagers : ReceivePrepared(rm)
+    \/ \E rm \in ResourceManagers :
+        \/ RequestPrepare(rm)
+        \/ ReceivePrepared(rm)
     \/ Forget
     \/ Commit
     \/ Abort
+    \/ Timeout
 
 Spec == Init /\ [][Next]_vars
 

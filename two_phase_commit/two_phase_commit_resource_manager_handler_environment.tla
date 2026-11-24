@@ -20,6 +20,7 @@ CONSTANTS
     InProgress,
     Success,
     Fail,
+    Refused,
 
     \* Resource states
     Compatible,
@@ -27,6 +28,7 @@ CONSTANTS
     Locked,
 
     \* Transaction manager messages
+    PrepareMsg,
     CommitMsg,
     AbortMsg
 
@@ -45,7 +47,7 @@ Init ==
     /\ transaction = None
     /\ resource \in { Compatible, Conflicting }
 
-Decided(message) == [ sender |-> TransactionManager, message |-> message ] \in inbox
+Received(message) == [ sender |-> TransactionManager, message |-> message ] \in inbox
 
 \* The database's handling of a request, as in its spec
 Process(request) ==
@@ -56,7 +58,7 @@ Process(request) ==
             ELSE UNCHANGED <<transaction, resource>>
       [] request = RefuseReq ->
             /\ IF transaction = None
-               THEN transaction' = Fail
+               THEN transaction' = Refused
                ELSE UNCHANGED transaction
             /\ UNCHANGED resource
       [] request = CommitReq ->
@@ -81,14 +83,14 @@ Reply ==
         { [ sender |-> Database, transaction |-> transaction', resource |-> resource' ] }
 
 \* The database processes another handler's request, which this one never sees.
-\* Another handler can always prepare, and can always refuse, since other
-\* transactions can always cause a conflict first.  It only commits or aborts
-\* once that's decided.
+\* Once asked, another handler can always prepare, and can always refuse, since
+\* other transactions can always cause a conflict first.  It only commits or
+\* aborts once that's decided.
 OtherHandler ==
     /\ \E request \in
-            { PrepareReq, RefuseReq }
-                \cup (IF Decided(CommitMsg) THEN { CommitReq } ELSE {})
-                \cup (IF Decided(AbortMsg) THEN { AbortReq } ELSE {}) :
+            (IF Received(PrepareMsg) THEN { PrepareReq, RefuseReq } ELSE {})
+                \cup (IF Received(CommitMsg) THEN { CommitReq } ELSE {})
+                \cup (IF Received(AbortMsg) THEN { AbortReq } ELSE {}) :
         Process(request)
     /\ UNCHANGED inbox
 
@@ -99,18 +101,23 @@ Flip ==
     /\ resource' = IF resource = Compatible THEN Conflicting ELSE Compatible
     /\ UNCHANGED <<inbox, transaction>>
 
+\* The transaction manager may ask to prepare at any time.
+RequestPrepare ==
+    /\ inbox' = inbox \cup { [ sender |-> TransactionManager, message |-> PrepareMsg ] }
+    /\ UNCHANGED <<transaction, resource>>
+
 \* The decision is one message.  A commit needs a vote, and another handler can
 \* always vote once the prepare is recorded, but none can before.
 Commit ==
-    /\ ~Decided(CommitMsg)
-    /\ ~Decided(AbortMsg)
+    /\ ~Received(CommitMsg)
+    /\ ~Received(AbortMsg)
     /\ transaction = InProgress
     /\ inbox' = inbox \cup { [ sender |-> TransactionManager, message |-> CommitMsg ] }
     /\ UNCHANGED <<transaction, resource>>
 
 Abort ==
-    /\ ~Decided(CommitMsg)
-    /\ ~Decided(AbortMsg)
+    /\ ~Received(CommitMsg)
+    /\ ~Received(AbortMsg)
     /\ inbox' = inbox \cup { [ sender |-> TransactionManager, message |-> AbortMsg ] }
     /\ UNCHANGED <<transaction, resource>>
 
@@ -118,6 +125,7 @@ Next ==
     \/ Reply
     \/ OtherHandler
     \/ Flip
+    \/ RequestPrepare
     \/ Commit
     \/ Abort
 

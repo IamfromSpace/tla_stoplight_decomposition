@@ -15,6 +15,7 @@ CONSTANTS
     InProgress,
     Success,
     Fail,
+    Refused,
 
     \* Resource states.  Conflicting covers both a lock held by another
     \* transaction and data our change can't apply to.
@@ -37,11 +38,11 @@ VARIABLES
 LOCAL vars == <<transaction, resource, outbox>>
 
 TypeOK ==
-    /\ transaction \in { None, InProgress, Success, Fail }
+    /\ transaction \in { None, InProgress, Success, Fail, Refused }
     /\ resource \in { Compatible, Conflicting, Locked }
     /\ outbox \subseteq
         [ recipient : Handlers,
-          transaction : { None, InProgress, Success, Fail },
+          transaction : { None, InProgress, Success, Fail, Refused },
           resource : { Compatible, Conflicting, Locked } ]
 
 Init ==
@@ -79,12 +80,12 @@ Prepare(handler) ==
 \* and a liveness risk.  Prepare here always sees current state, so snapshot
 \* isolation only implements this spec if we explicitly allow stale reads.
 \*
-\* INSERT INTO rm_txns (txn_id, status) VALUES (:txn, 'fail')
+\* INSERT INTO rm_txns (txn_id, status) VALUES (:txn, 'refused')
 \*   ON CONFLICT DO NOTHING;
 Refuse(handler) ==
     /\ Requested(handler, RefuseReq)
     /\ IF transaction = None
-       THEN transaction' = Fail
+       THEN transaction' = Refused
        ELSE UNCHANGED transaction
     /\ UNCHANGED resource
     /\ Reply(handler)

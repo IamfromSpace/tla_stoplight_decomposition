@@ -4,10 +4,11 @@
    and one outbox, and every message names the Database or resource manager it
    comes from or goes to; the composite routes them.  A reminder wakes an idle
    handler, which reads the decision.  If there is one, the handler broadcasts
-   it forever, since nothing acknowledges it.  If not, it collects votes in
-   memory, then writes a commit once it has them all, or an abort at any time,
-   and reads the decision back.  A handler can crash at any time, forgetting its
-   votes.
+   it forever, since nothing acknowledges it.  If not, it asks each resource
+   manager to prepare, in any order, and collects their votes in memory.  It
+   writes a commit once it has every vote, or an abort on a refusal or a
+   timeout, and reads the decision back.  A handler can crash at any time,
+   forgetting its votes.
 
    Requests to the Database are SQL, against:
      CREATE TABLE decisions (txn_id TEXT PRIMARY KEY, decision TEXT NOT NULL) STRICT;
@@ -37,7 +38,9 @@ CONSTANTS
     Txn,
 
     \* Resource manager messages
+    PrepareMsg,
     PreparedMsg,
+    RefusedMsg,
     CommitMsg,
     AbortMsg
 
@@ -74,7 +77,7 @@ TypeOK ==
     /\ outbox \in [ Handlers -> SUBSET (
             [ recipient : { Database },
               sql : { ReadDecision, WriteDecision(Committed), WriteDecision(Aborted) } ]
-                \cup [ recipient : ResourceManagers, message : { CommitMsg, AbortMsg } ]) ]
+                \cup [ recipient : ResourceManagers, message : { PrepareMsg, CommitMsg, AbortMsg } ]) ]
 
 Init ==
     /\ state = [ handler \in Handlers |-> Idle ]
@@ -101,6 +104,12 @@ Learn(handler) ==
         /\ \E row \in reply.rows : state' = [ state EXCEPT ![handler] = row.decision ]
     /\ UNCHANGED <<prepared, outbox>>
 
+RequestPrepare(handler, rm) ==
+    /\ state[handler] = Collecting
+    /\ outbox' = [ outbox EXCEPT ![handler] =
+            @ \cup { [ recipient |-> rm, message |-> PrepareMsg ] } ]
+    /\ UNCHANGED <<state, prepared>>
+
 ReceivePrepared(handler, rm) ==
     /\ state[handler] = Collecting
     /\ [ sender |-> rm, message |-> PreparedMsg ] \in inbox[handler]
@@ -115,8 +124,15 @@ Commit(handler) ==
             @ \cup { [ recipient |-> Database, sql |-> WriteDecision(Committed) ] } ]
     /\ UNCHANGED prepared
 
-\* On an implicit timeout, or a refusal
 Abort(handler) ==
+    /\ state[handler] = Collecting
+    /\ \E rm \in ResourceManagers : [ sender |-> rm, message |-> RefusedMsg ] \in inbox[handler]
+    /\ state' = [ state EXCEPT ![handler] = Reading ]
+    /\ outbox' = [ outbox EXCEPT ![handler] =
+            @ \cup { [ recipient |-> Database, sql |-> WriteDecision(Aborted) ] } ]
+    /\ UNCHANGED prepared
+
+Timeout(handler) ==
     /\ state[handler] = Collecting
     /\ state' = [ state EXCEPT ![handler] = Reading ]
     /\ outbox' = [ outbox EXCEPT ![handler] =
@@ -141,9 +157,12 @@ Next ==
         \/ Start(handler)
         \/ Collect(handler)
         \/ Learn(handler)
-        \/ \E rm \in ResourceManagers : ReceivePrepared(handler, rm)
+        \/ \E rm \in ResourceManagers :
+            \/ RequestPrepare(handler, rm)
+            \/ ReceivePrepared(handler, rm)
         \/ Commit(handler)
         \/ Abort(handler)
+        \/ Timeout(handler)
         \/ \E rm \in ResourceManagers : Broadcast(handler, rm)
         \/ Crash(handler)
 

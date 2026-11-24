@@ -2,10 +2,11 @@
 
 (* The handlers behind one resource manager, as a group.  Each has one inbox
    and one outbox, and every message names the Database or TransactionManager
-   it comes from or goes to; the composite routes them.  A handler wakes for
-   the implicit, always-retried prepare or for a decision in its inbox, and can
-   crash at any time.  Only a prepare waits for the database's reply; nothing
-   is done with the others, so the handler stops as soon as it sends them. *)
+   it comes from or goes to; the composite routes them.  A handler wakes for a
+   request or decision in its inbox, so once asked it can prepare any number of
+   times, and it can crash at any time.  Only a prepare waits for the database's
+   reply, and answers it with a vote or a refusal; nothing is done with the
+   others, so the handler stops as soon as it sends them. *)
 
 CONSTANTS
     Handlers,
@@ -27,10 +28,13 @@ CONSTANTS
     \* Database replies
     None,
     InProgress,
+    Refused,
     Conflicting,
 
     \* Transaction manager messages
+    PrepareMsg,
     PreparedMsg,
+    RefusedMsg,
     CommitMsg,
     AbortMsg
 
@@ -45,7 +49,7 @@ TypeOK ==
     /\ state \in [ Handlers -> { Idle, Preparing } ]
     /\ outbox \in [ Handlers -> SUBSET (
             [ recipient : { Database }, request : { PrepareReq, RefuseReq, CommitReq, AbortReq } ]
-                \cup [ recipient : { TransactionManager }, message : { PreparedMsg } ]) ]
+                \cup [ recipient : { TransactionManager }, message : { PreparedMsg, RefusedMsg } ]) ]
 
 Init ==
     /\ state = [ handler \in Handlers |-> Idle ]
@@ -53,6 +57,7 @@ Init ==
 
 Prepare(handler) ==
     /\ state[handler] = Idle
+    /\ [ sender |-> TransactionManager, message |-> PrepareMsg ] \in inbox[handler]
     /\ state' = [ state EXCEPT ![handler] = Preparing ]
     /\ outbox' = [ outbox EXCEPT ![handler] =
             @ \cup { [ recipient |-> Database, request |-> PrepareReq ] } ]
@@ -90,6 +95,15 @@ Refuse(handler) ==
     /\ outbox' = [ outbox EXCEPT ![handler] =
             @ \cup { [ recipient |-> Database, request |-> RefuseReq ] } ]
 
+ReportRefusal(handler) ==
+    /\ state[handler] = Preparing
+    /\ \E reply \in inbox[handler] :
+        /\ reply.sender = Database
+        /\ reply.transaction = Refused
+    /\ state' = [ state EXCEPT ![handler] = Idle ]
+    /\ outbox' = [ outbox EXCEPT ![handler] =
+            @ \cup { [ recipient |-> TransactionManager, message |-> RefusedMsg ] } ]
+
 \* Crash also covers a prepare whose reply shows the transaction is already
 \* decided: there's nothing left to do, so the handler just stops.
 Crash(handler) ==
@@ -104,6 +118,7 @@ Next ==
         \/ Abort(handler)
         \/ Vote(handler)
         \/ Refuse(handler)
+        \/ ReportRefusal(handler)
         \/ Crash(handler)
 
 Spec == Init /\ [][Next]_vars

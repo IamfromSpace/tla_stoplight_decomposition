@@ -28,6 +28,7 @@ CONSTANTS
     InProgress,
     Success,
     Fail,
+    Refused,
 
     \* Resource states
     Compatible,
@@ -35,7 +36,9 @@ CONSTANTS
     Locked,
 
     \* Transaction manager messages
+    PrepareMsg,
     PreparedMsg,
+    RefusedMsg,
     CommitMsg,
     AbortMsg
 

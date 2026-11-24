@@ -29,7 +29,9 @@ CONSTANTS
     Txn,
 
     \* Resource manager messages
+    PrepareMsg,
     PreparedMsg,
+    RefusedMsg,
     CommitMsg,
     AbortMsg
 

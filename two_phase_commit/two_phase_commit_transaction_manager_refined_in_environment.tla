@@ -29,7 +29,9 @@ CONSTANTS
     Txn,
 
     \* Resource manager messages
+    PrepareMsg,
     PreparedMsg,
+    RefusedMsg,
     CommitMsg,
     AbortMsg
 
@@ -50,7 +52,8 @@ VARIABLES
 
 TM == INSTANCE two_phase_commit_transaction_manager_refined
 
-Environment == INSTANCE two_phase_commit_transaction_manager_environment
+Environment == INSTANCE two_phase_commit_transaction_manager_environment WITH
+    outbox <- TM!outbox
 
 TMVars == <<handler_state, handler_prepared, handler_outbox, db_tables, db_outbox>>
 EnvironmentVars == <<inbox>>

@@ -20,7 +20,8 @@ CONSTANTS
     Txn,
 
     \* Resource manager messages
-    PreparedMsg
+    PreparedMsg,
+    RefusedMsg
 
 VARIABLES
     inbox,
@@ -35,12 +36,17 @@ Init ==
     /\ inbox = {}
     /\ decision = Undecided
 
+\* Each resource manager votes at most once, yes or no, at any time, since
+\* another handler can always have asked it to prepare.
 Vote(rm) ==
-    /\ inbox' = inbox \cup { [ sender |-> rm, message |-> PreparedMsg ] }
+    /\ \A vote \in { PreparedMsg, RefusedMsg } : [ sender |-> rm, message |-> vote ] \notin inbox
+    /\ \E vote \in { PreparedMsg, RefusedMsg } :
+        inbox' = inbox \cup { [ sender |-> rm, message |-> vote ] }
     /\ UNCHANGED decision
 
-\* Some handler's write lands: an abort at any time, or a commit once every vote
-\* is in, since another handler can always hear them all.
+\* Some handler's write lands: an abort at any time, or a commit once every
+\* resource manager has voted yes, since another handler can always hear them
+\* all.
 Decide ==
     /\ decision = Undecided
     /\ \/ decision' = Aborted

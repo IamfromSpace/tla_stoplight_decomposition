@@ -10,7 +10,9 @@ CONSTANTS
     Aborted,
 
     \* Messages
+    PrepareMsg,
     PreparedMsg,
+    RefusedMsg,
     CommitMsg,
     AbortMsg
 
