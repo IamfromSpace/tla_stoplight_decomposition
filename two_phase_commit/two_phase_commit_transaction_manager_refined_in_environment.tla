@@ -46,10 +46,7 @@ VARIABLES
     db_outbox,
 
     \* Environment vars
-    inbox,
-
-    \* History
-    heard
+    inbox
 
 TM == INSTANCE two_phase_commit_transaction_manager_refined
 
@@ -58,7 +55,7 @@ Environment == INSTANCE two_phase_commit_transaction_manager_environment
 TMVars == <<handler_state, handler_prepared, handler_outbox, db_tables, db_outbox>>
 EnvironmentVars == <<inbox>>
 
-LOCAL vars == <<TMVars, EnvironmentVars, heard>>
+LOCAL vars == <<TMVars, EnvironmentVars>>
 
 TypeOK == TM!TypeOK
 
@@ -71,18 +68,10 @@ Decision ==
 Init ==
     /\ TM!Init
     /\ Environment!Init
-    /\ heard = {}
 
-\* Votes only live in handlers' memories, so heard keeps every vote a handler
-\* has heard while undecided, to stand for the abstract prepared set.
 Next ==
-    /\ \/ TM!Next /\ UNCHANGED EnvironmentVars
-       \/ Environment!Next /\ UNCHANGED TMVars
-    /\ heard' =
-        IF Decision = Undecided
-        THEN heard \cup UNION { handler_prepared'[handler] \ handler_prepared[handler] :
-                                    handler \in Handlers }
-        ELSE heard
+    \/ TM!Next /\ UNCHANGED EnvironmentVars
+    \/ Environment!Next /\ UNCHANGED TMVars
 
 Spec == Init /\ [][Next]_vars
 
@@ -97,9 +86,18 @@ AbstractOutbox ==
               [] Decision = Aborted -> { AbortMsg }
               [] Decision = Undecided -> {} ]
 
+\* The votes the handlers remember, or all of them once a handler asks to
+\* commit: that request had them all, and can outlive its sender's memory.
+AbstractPrepared ==
+    IF \E handler \in Handlers :
+            [ recipient |-> Database, sql |-> TM!HandlerGroup!WriteDecision(Committed) ]
+                \in handler_outbox[handler]
+    THEN ResourceManagers
+    ELSE UNION { handler_prepared[handler] : handler \in Handlers }
+
 TMAbstract == INSTANCE two_phase_commit_transaction_manager_abstract WITH
     state <- Decision,
-    prepared <- heard,
+    prepared <- AbstractPrepared,
     outbox <- AbstractOutbox
 
 \* Safety only, for now

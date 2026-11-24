@@ -1,8 +1,9 @@
 ---- MODULE two_phase_commit_transaction_manager_abstract ----
 
 (* The transaction manager of two-phase commit.  inbox belongs to the
-   environment, which may send anything; votes that arrive after the decision
-   are ignored. *)
+   environment, which may send anything.  The manager remembers votes from its
+   inbox, and may forget any of them at any time, but only commits while it
+   remembers them all. *)
 
 CONSTANTS
     ResourceManagers,
@@ -36,9 +37,12 @@ Init ==
     /\ outbox = [ rm \in ResourceManagers |-> {} ]
 
 ReceivePrepared(rm) ==
-    /\ state = Undecided
     /\ PreparedMsg \in inbox[rm]
     /\ prepared' = prepared \cup { rm }
+    /\ UNCHANGED <<state, outbox>>
+
+Forget ==
+    /\ prepared' \in SUBSET prepared
     /\ UNCHANGED <<state, outbox>>
 
 Commit ==
@@ -56,6 +60,7 @@ Abort ==
 
 Next ==
     \/ \E rm \in ResourceManagers : ReceivePrepared(rm)
+    \/ Forget
     \/ Commit
     \/ Abort
 

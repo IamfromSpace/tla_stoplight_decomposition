@@ -7,11 +7,6 @@
 let
   tlaplus_examples = "https://raw.githubusercontent.com/tlaplus/Examples/334c3983a2f44ac78fce89d1d20aa79ceb3e6987/specifications/transaction_commit";
 
-  two_phase = fetchurl {
-    url = "${tlaplus_examples}/TwoPhase.tla";
-    hash = "sha256-5ucu0Al8ylXoC5evM8O8VHkqUEvL32OdbZxmb0nBeBc=";
-  };
-
   t_commit = fetchurl {
     url = "${tlaplus_examples}/TCommit.tla";
     hash = "sha256-mJdNjF7gB/T2IYhzfCDH3NsFrwmcxTpZyLhlEzH9kl0=";
@@ -33,7 +28,6 @@ let
       cp -L ${./two_phase_commit_transaction_manager_abstract.tla} two_phase_commit_transaction_manager_abstract.tla
       cp -L ${./two_phase_commit_resource_manager_environment.tla} two_phase_commit_resource_manager_environment.tla
       cp -L ${./two_phase_commit_transaction_manager_environment.tla} two_phase_commit_transaction_manager_environment.tla
-      cp -L ${two_phase} TwoPhase.tla
       cp -L ${t_commit} TCommit.tla
       mkdir -p $out/share
       tlc $SPEC -config ${./two_phase_commit_composite.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
@@ -55,7 +49,6 @@ let
       cp -L ${./two_phase_commit_transaction_manager_abstract.tla} two_phase_commit_transaction_manager_abstract.tla
       cp -L ${./two_phase_commit_resource_manager_environment.tla} two_phase_commit_resource_manager_environment.tla
       cp -L ${./two_phase_commit_transaction_manager_environment.tla} two_phase_commit_transaction_manager_environment.tla
-      cp -L ${two_phase} TwoPhase.tla
       cp -L ${t_commit} TCommit.tla
       mkdir -p $out/share
       tlc $SPEC -config ${./two_phase_commit_composite_env.cfg} -workers $WORKERS | tee $out/share/two_phase_commit_composite_env.log
