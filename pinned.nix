@@ -1,7 +1,7 @@
 import
   (builtins.fetchTarball {
-    name = "nixos-25.05";
-    url = "https://github.com/nixos/nixpkgs/archive/tags/25.05.tar.gz";
-    sha256 = "sha256:1915r28xc4znrh2vf4rrjnxldw2imysz819gzhk9qlrkqanmfsxd";
+    name = "nixos-26.05";
+    url = "https://releases.nixos.org/nixos/26.05/nixos-26.05.15079.0dc498bfe49b/nixexprs.tar.xz";
+    sha256 = "sha256:11bidflcplzwprk6wzpgg1ypx3qsb990l8mybcrmg1ggypmmjf25";
   })
   {}
