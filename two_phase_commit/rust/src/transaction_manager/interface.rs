@@ -38,3 +38,8 @@ pub trait Database: Sync {
         decision: Decision,
     ) -> impl Future<Output = Result<Decision, Unavailable>> + Send;
 }
+
+pub trait Environment: Database {
+    type ResourceManager: ResourceManager;
+    fn resource_managers(&self) -> &[Self::ResourceManager];
+}
