@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "rust"
+name = "two_phase_commit"
 version = "0.1.0"
