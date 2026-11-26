@@ -79,18 +79,23 @@ mod tests {
         }
     }
 
+    enum OtherHandler {
+        DecidesBeforeRead(Decision),
+        DecidesBeforeWrite(Decision),
+    }
+
     struct TestEnvironment {
         database_available: bool,
+        other_handler: Option<OtherHandler>,
         decision: Mutex<Option<Decision>>,
-        written_concurrently: Option<Decision>,
         resource_managers: Vec<TestResourceManager>,
     }
 
     fn environment(resource_managers: Vec<TestResourceManager>) -> TestEnvironment {
         TestEnvironment {
             database_available: true,
+            other_handler: None,
             decision: Mutex::default(),
-            written_concurrently: None,
             resource_managers,
         }
     }
@@ -109,7 +114,11 @@ mod tests {
             if !self.database_available {
                 return Err(Unavailable);
             }
-            Ok(*self.decision.lock().unwrap())
+            let mut stored = self.decision.lock().unwrap();
+            if let Some(OtherHandler::DecidesBeforeRead(theirs)) = self.other_handler {
+                stored.get_or_insert(theirs);
+            }
+            Ok(*stored)
         }
 
         async fn write_decision(
@@ -121,7 +130,10 @@ mod tests {
                 return Err(Unavailable);
             }
             let mut stored = self.decision.lock().unwrap();
-            Ok(*stored.get_or_insert(self.written_concurrently.unwrap_or(decision)))
+            if let Some(OtherHandler::DecidesBeforeWrite(theirs)) = self.other_handler {
+                stored.get_or_insert(theirs);
+            }
+            Ok(*stored.get_or_insert(decision))
         }
     }
 
@@ -170,7 +182,7 @@ mod tests {
     #[tokio::test]
     async fn repeats_a_decision_already_made() {
         let environment = TestEnvironment {
-            decision: Mutex::new(Some(Decision::Committed)),
+            other_handler: Some(OtherHandler::DecidesBeforeRead(Decision::Committed)),
             ..environment(vec![resource_manager(Ok(Vote::Prepared))])
         };
         assert_eq!(handle(&environment, "t").await, Ok(Decision::Committed));
@@ -180,7 +192,7 @@ mod tests {
     #[tokio::test]
     async fn follows_the_decision_that_stands() {
         let environment = TestEnvironment {
-            written_concurrently: Some(Decision::Aborted),
+            other_handler: Some(OtherHandler::DecidesBeforeWrite(Decision::Aborted)),
             ..environment(vec![resource_manager(Ok(Vote::Prepared))])
         };
         assert_eq!(handle(&environment, "t").await, Ok(Decision::Aborted));
