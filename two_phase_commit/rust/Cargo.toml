@@ -6,4 +6,5 @@ edition = "2024"
 [dependencies]
 
 [dev-dependencies]
+rand = { version = "0.10.4", default-features = false, features = ["alloc", "std_rng"] }
 tokio = { version = "1.54.1", features = ["macros", "rt"] }
