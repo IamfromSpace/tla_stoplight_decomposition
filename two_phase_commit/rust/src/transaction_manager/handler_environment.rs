@@ -9,6 +9,7 @@ use std::time::Duration;
 use rand::SeedableRng;
 use rand::rngs::StdRng;
 use rand::seq::IndexedRandom;
+use tokio::task::yield_now;
 
 use super::handler::handle;
 use super::interface::{Database, Decision, Environment, ResourceManager, Unavailable, Vote};
@@ -189,15 +190,16 @@ impl Fuzzer {
             .expect("a pending request can always fail");
         self.environment.take(step);
     }
+}
 
-    fn call(&mut self, request: Request) -> Outcome {
-        self.environment.send(request);
-        loop {
-            if let Some(&outcome) = self.environment.outcomes.get(&request) {
-                return outcome;
-            }
-            self.step();
+async fn call(fuzzer: &Mutex<Fuzzer>, request: Request) -> Outcome {
+    fuzzer.lock().unwrap().environment.send(request);
+    loop {
+        if let Some(&outcome) = fuzzer.lock().unwrap().environment.outcomes.get(&request) {
+            return outcome;
         }
+        fuzzer.lock().unwrap().step();
+        yield_now().await;
     }
 }
 
@@ -235,7 +237,7 @@ impl FuzzedEnvironment {
 
 impl Database for FuzzedEnvironment {
     async fn read_decision(&self, _: &str) -> Result<Option<Decision>, Unavailable> {
-        match self.fuzzer.lock().unwrap().call(Request::ReadDecision) {
+        match call(&self.fuzzer, Request::ReadDecision).await {
             Outcome::Received(Message::Reply(decision)) => Ok(decision),
             Outcome::Unavailable => Err(Unavailable),
             outcome => unreachable!("{outcome:?}"),
@@ -244,7 +246,7 @@ impl Database for FuzzedEnvironment {
 
     async fn write_decision(&self, _: &str, decision: Decision) -> Result<Decision, Unavailable> {
         let write = Request::WriteDecision(decision);
-        match self.fuzzer.lock().unwrap().call(write) {
+        match call(&self.fuzzer, write).await {
             Outcome::Received(Message::Reply(Some(stands))) => Ok(stands),
             Outcome::Unavailable => Err(Unavailable),
             outcome => unreachable!("{outcome:?}"),
@@ -262,7 +264,7 @@ impl Environment for FuzzedEnvironment {
 
 impl ResourceManager for FuzzedResourceManager {
     async fn prepare(&self, _: &str, _: Duration) -> Result<Vote, Unavailable> {
-        match self.fuzzer.lock().unwrap().call(Request::Prepare(self.rm)) {
+        match call(&self.fuzzer, Request::Prepare(self.rm)).await {
             Outcome::Received(Message::Vote(_, vote)) => Ok(vote),
             Outcome::Unavailable => Err(Unavailable),
             outcome => unreachable!("{outcome:?}"),
@@ -270,7 +272,7 @@ impl ResourceManager for FuzzedResourceManager {
     }
 
     async fn commit(&self, _: &str) -> Result<(), Unavailable> {
-        match self.fuzzer.lock().unwrap().call(Request::Commit(self.rm)) {
+        match call(&self.fuzzer, Request::Commit(self.rm)).await {
             Outcome::Acknowledged => Ok(()),
             Outcome::Unavailable => Err(Unavailable),
             outcome => unreachable!("{outcome:?}"),
@@ -278,7 +280,7 @@ impl ResourceManager for FuzzedResourceManager {
     }
 
     async fn abort(&self, _: &str) -> Result<(), Unavailable> {
-        match self.fuzzer.lock().unwrap().call(Request::Abort(self.rm)) {
+        match call(&self.fuzzer, Request::Abort(self.rm)).await {
             Outcome::Acknowledged => Ok(()),
             Outcome::Unavailable => Err(Unavailable),
             outcome => unreachable!("{outcome:?}"),
@@ -388,5 +390,22 @@ async fn reaches_every_result() {
         Err(Unavailable),
     ] {
         assert!(results.contains(&result), "{result:?} never happened");
+    }
+}
+
+#[tokio::test]
+async fn completes_concurrent_calls_in_any_order() {
+    let mut finished_first = Vec::new();
+    for seed in 0..100 {
+        let environment = FuzzedEnvironment::new(seed, 2);
+        let resource_managers = environment.resource_managers();
+        finished_first.push(tokio::select! {
+            biased;
+            _ = resource_managers[0].prepare("t", Duration::ZERO) => 0,
+            _ = resource_managers[1].prepare("t", Duration::ZERO) => 1,
+        });
+    }
+    for rm in [0, 1] {
+        assert!(finished_first.contains(&rm), "{rm} never finished first");
     }
 }
