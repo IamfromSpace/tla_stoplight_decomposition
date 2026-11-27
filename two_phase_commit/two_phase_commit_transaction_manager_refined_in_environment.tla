@@ -6,6 +6,7 @@
 CONSTANTS
     Handlers,
     ResourceManagers,
+    Synchronous,
 
     \* Handler states
     Idle,
@@ -33,7 +34,11 @@ CONSTANTS
     PreparedMsg,
     RefusedMsg,
     CommitMsg,
-    AbortMsg
+    AbortMsg,
+
+    \* Responses that aren't messages
+    Unavailable,
+    Acknowledged
 
 \* TLC only checks assumptions in the module it runs, so this repeats the
 \* handlers'.
@@ -46,6 +51,7 @@ VARIABLES
     handler_outbox,
     db_tables,
     db_outbox,
+    adapter_outcomes,
 
     \* Environment vars
     inbox
@@ -55,7 +61,7 @@ TM == INSTANCE two_phase_commit_transaction_manager_refined
 Environment == INSTANCE two_phase_commit_transaction_manager_environment WITH
     outbox <- TM!outbox
 
-TMVars == <<handler_state, handler_prepared, handler_outbox, db_tables, db_outbox>>
+TMVars == <<handler_state, handler_prepared, handler_outbox, db_tables, db_outbox, adapter_outcomes>>
 EnvironmentVars == <<inbox>>
 
 LOCAL vars == <<TMVars, EnvironmentVars>>
@@ -105,12 +111,9 @@ TMAbstract == INSTANCE two_phase_commit_transaction_manager_abstract WITH
 
 ImplementsAbstractTM == TMAbstract!Spec
 
-\* Any handler will do, by symmetry
-LOCAL SomeHandler == CHOOSE handler \in Handlers : TRUE
-
 HandlerEnvironment == INSTANCE two_phase_commit_transaction_manager_handler_environment WITH
-    inbox <- TM!HandlerInbox[SomeHandler],
-    outbox <- handler_outbox[SomeHandler],
+    inbox <- TM!HandlerInbox[TM!SomeHandler],
+    outbox <- handler_outbox[TM!SomeHandler],
     decision <- Decision
 
 ClosedSpecRefinesHandlerEnvironment == HandlerEnvironment!Spec

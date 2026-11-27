@@ -4,11 +4,13 @@
    Each handler's requests reach the database with the handler as their sender,
    and each reply goes back to its recipient.  Every handler sees all of inbox,
    which belongs to the environment, and outbox[rm] is everything the handlers
-   send rm. *)
+   send rm.  If Synchronous, one handler instead sees messages only as the
+   outcomes of its own requests, through an adapter. *)
 
 CONSTANTS
     Handlers,
     ResourceManagers,
+    Synchronous,
 
     \* Handler states
     Idle,
@@ -33,7 +35,11 @@ CONSTANTS
     PreparedMsg,
     RefusedMsg,
     CommitMsg,
-    AbortMsg
+    AbortMsg,
+
+    \* Responses that aren't messages
+    Unavailable,
+    Acknowledged
 
 VARIABLES
     \* Handler vars
@@ -44,6 +50,9 @@ VARIABLES
     \* Database vars
     db_tables,
     db_outbox,
+
+    \* Adapter vars
+    adapter_outcomes,
 
     \* Environment vars
     inbox
@@ -69,10 +78,24 @@ DBInbox ==
 Schema ==
     [ decisions |-> [ columns |-> { "txn_id", "decision" }, primary_key |-> { "txn_id" } ] ]
 
+\* Any handler will do, by symmetry.  One synchronous handler stands for any
+\* number, since each only sees less.
+SomeHandler == CHOOSE handler \in Handlers : TRUE
+
+Adapter == INSTANCE two_phase_commit_transaction_manager_handler_environment_sync_adapter WITH
+    inbox <- HandlerInbox[SomeHandler],
+    outbox <- handler_outbox[SomeHandler],
+    outcomes <- adapter_outcomes
+
+HandlerView ==
+    IF Synchronous
+    THEN [ HandlerInbox EXCEPT ![SomeHandler] = Adapter!Received ]
+    ELSE HandlerInbox
+
 HandlerGroup == INSTANCE two_phase_commit_transaction_manager_handlers WITH
     state <- handler_state,
     prepared <- handler_prepared,
-    inbox <- HandlerInbox,
+    inbox <- HandlerView,
     outbox <- handler_outbox
 
 DB == INSTANCE two_phase_commit_sqlite WITH
@@ -82,20 +105,24 @@ DB == INSTANCE two_phase_commit_sqlite WITH
 
 HandlerVars == <<handler_state, handler_prepared, handler_outbox>>
 DBVars == <<db_tables, db_outbox>>
+AdapterVars == <<adapter_outcomes>>
 
-LOCAL vars == <<HandlerVars, DBVars>>
+LOCAL vars == <<HandlerVars, DBVars, AdapterVars>>
 
 TypeOK ==
     /\ HandlerGroup!TypeOK
     /\ DB!TypeOK
+    /\ Adapter!TypeOK
 
 Init ==
     /\ HandlerGroup!Init
     /\ DB!Init
+    /\ Adapter!Init
 
 Next ==
-    \/ HandlerGroup!Next /\ UNCHANGED DBVars
-    \/ DB!Next /\ UNCHANGED HandlerVars
+    \/ HandlerGroup!Next /\ UNCHANGED <<DBVars, AdapterVars>>
+    \/ DB!Next /\ UNCHANGED <<HandlerVars, AdapterVars>>
+    \/ Synchronous /\ Adapter!Next /\ UNCHANGED <<HandlerVars, DBVars>>
 
 Spec == Init /\ [][Next]_vars
 
