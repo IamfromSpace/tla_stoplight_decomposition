@@ -1,5 +1,7 @@
 use std::time::Duration;
 
+use futures_util::stream::{FuturesUnordered, StreamExt};
+
 use super::interface::{Decision, Environment, ResourceManager, Unavailable, Vote};
 
 const TIMEOUT: Duration = Duration::from_secs(1);
@@ -11,9 +13,14 @@ pub async fn handle(
     let decision = match environment.read_decision(transaction_id).await? {
         Some(decision) => decision,
         None => {
+            let mut votes: FuturesUnordered<_> = environment
+                .resource_managers()
+                .iter()
+                .map(|resource_manager| resource_manager.prepare(transaction_id, TIMEOUT))
+                .collect();
             let mut proposal = Decision::Committed;
-            for resource_manager in environment.resource_managers() {
-                match resource_manager.prepare(transaction_id, TIMEOUT).await {
+            while let Some(vote) = votes.next().await {
+                match vote {
                     Ok(Vote::Prepared) => {}
                     Ok(Vote::Refused) | Err(Unavailable) => {
                         proposal = Decision::Aborted;
@@ -25,12 +32,18 @@ pub async fn handle(
         }
     };
 
+    let mut informing: FuturesUnordered<_> = environment
+        .resource_managers()
+        .iter()
+        .map(|resource_manager| async move {
+            match decision {
+                Decision::Committed => resource_manager.commit(transaction_id).await,
+                Decision::Aborted => resource_manager.abort(transaction_id).await,
+            }
+        })
+        .collect();
     let mut outcome = Ok(decision);
-    for resource_manager in environment.resource_managers() {
-        let informed = match decision {
-            Decision::Committed => resource_manager.commit(transaction_id).await,
-            Decision::Aborted => resource_manager.abort(transaction_id).await,
-        };
+    while let Some(informed) = informing.next().await {
         if informed.is_err() {
             outcome = Err(Unavailable);
         }
@@ -40,8 +53,11 @@ pub async fn handle(
 
 #[cfg(test)]
 mod tests {
+    use std::future::pending;
     use std::sync::Mutex;
     use std::time::Duration;
+
+    use futures_util::FutureExt;
 
     use super::handle;
     use crate::transaction_manager::interface::{
@@ -49,15 +65,23 @@ mod tests {
     };
 
     struct TestResourceManager {
-        vote: Result<Vote, Unavailable>,
-        informed: Result<(), Unavailable>,
+        vote: Option<Result<Vote, Unavailable>>,
+        informed: Option<Result<(), Unavailable>>,
         received: Mutex<Vec<&'static str>>,
     }
 
     fn resource_manager(vote: Result<Vote, Unavailable>) -> TestResourceManager {
         TestResourceManager {
-            vote,
-            informed: Ok(()),
+            vote: Some(vote),
+            informed: Some(Ok(())),
+            received: Mutex::default(),
+        }
+    }
+
+    fn resource_manager_yet_to_vote() -> TestResourceManager {
+        TestResourceManager {
+            vote: None,
+            informed: Some(Ok(())),
             received: Mutex::default(),
         }
     }
@@ -65,17 +89,26 @@ mod tests {
     impl ResourceManager for TestResourceManager {
         async fn prepare(&self, _: &str, _: Duration) -> Result<Vote, Unavailable> {
             self.received.lock().unwrap().push("prepare");
-            self.vote
+            match self.vote {
+                Some(vote) => vote,
+                None => pending().await,
+            }
         }
 
         async fn commit(&self, _: &str) -> Result<(), Unavailable> {
             self.received.lock().unwrap().push("commit");
-            self.informed
+            match self.informed {
+                Some(informed) => informed,
+                None => pending().await,
+            }
         }
 
         async fn abort(&self, _: &str) -> Result<(), Unavailable> {
             self.received.lock().unwrap().push("abort");
-            self.informed
+            match self.informed {
+                Some(informed) => informed,
+                None => pending().await,
+            }
         }
     }
 
@@ -155,28 +188,27 @@ mod tests {
         assert_eq!(environment.received(), ["prepare commit", "prepare commit"]);
     }
 
-    #[tokio::test]
-    async fn aborts_as_soon_as_one_refuses() {
+    #[test]
+    fn aborts_as_soon_as_one_refuses() {
         let environment = environment(vec![
-            resource_manager(Ok(Vote::Prepared)),
+            resource_manager_yet_to_vote(),
             resource_manager(Ok(Vote::Refused)),
-            resource_manager(Ok(Vote::Prepared)),
         ]);
-        assert_eq!(handle(&environment, "t").await, Ok(Decision::Aborted));
         assert_eq!(
-            environment.received(),
-            ["prepare abort", "prepare abort", "abort"]
+            handle(&environment, "t").now_or_never(),
+            Some(Ok(Decision::Aborted))
         );
+        assert_eq!(environment.received(), ["prepare abort", "prepare abort"]);
     }
 
     #[tokio::test]
     async fn aborts_when_one_is_unavailable() {
         let environment = environment(vec![
-            resource_manager(Err(Unavailable)),
             resource_manager(Ok(Vote::Prepared)),
+            resource_manager(Err(Unavailable)),
         ]);
         assert_eq!(handle(&environment, "t").await, Ok(Decision::Aborted));
-        assert_eq!(environment.received(), ["prepare abort", "abort"]);
+        assert_eq!(environment.received(), ["prepare abort", "prepare abort"]);
     }
 
     #[tokio::test]
@@ -213,12 +245,25 @@ mod tests {
     async fn informs_the_rest_when_one_is_unavailable() {
         let environment = environment(vec![
             TestResourceManager {
-                informed: Err(Unavailable),
+                informed: Some(Err(Unavailable)),
                 ..resource_manager(Ok(Vote::Prepared))
             },
             resource_manager(Ok(Vote::Prepared)),
         ]);
         assert_eq!(handle(&environment, "t").await, Err(Unavailable));
+        assert_eq!(environment.received(), ["prepare commit", "prepare commit"]);
+    }
+
+    #[test]
+    fn informs_every_resource_manager_at_once() {
+        let environment = environment(vec![
+            TestResourceManager {
+                informed: None,
+                ..resource_manager(Ok(Vote::Prepared))
+            },
+            resource_manager(Ok(Vote::Prepared)),
+        ]);
+        assert_eq!(handle(&environment, "t").now_or_never(), None);
         assert_eq!(environment.received(), ["prepare commit", "prepare commit"]);
     }
 

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+futures-util = { version = "0.3.34", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 rand = { version = "0.10.4", default-features = false, features = ["alloc", "std_rng"] }
