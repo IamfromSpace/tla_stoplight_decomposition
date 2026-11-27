@@ -39,6 +39,27 @@ pub trait Database: Sync {
     ) -> impl Future<Output = Result<Decision, Unavailable>> + Send;
 }
 
+/// A step of two_phase_commit_transaction_manager_handlers.tla, by one handler, with resource
+/// managers numbered as in [`Environment::resource_managers`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HandlerStep {
+    Start,
+    Collect,
+    Learn(Decision),
+    RequestPrepare(usize),
+    ReceivePrepared(usize),
+    Commit,
+    Abort,
+    Timeout,
+    Broadcast(usize),
+}
+
+pub trait HandlerLog: Sync {
+    /// Hears of each step as the handler takes it, so a step that sends a request comes just
+    /// before the request does.
+    fn record(&self, step: HandlerStep);
+}
+
 pub trait Environment: Database {
     type ResourceManager: ResourceManager;
     fn resource_managers(&self) -> &[Self::ResourceManager];
