@@ -378,34 +378,42 @@ async fn reports_the_decision_that_stands() {
     }
 }
 
+const SEARCHED_SEEDS: u64 = 10_000;
+
 #[tokio::test]
 async fn reaches_every_result() {
-    let mut results = Vec::new();
-    for seed in 0..1000 {
-        results.push(handle(&FuzzedEnvironment::new(seed, 2), "t").await);
-    }
-    for result in [
+    let mut unseen = vec![
         Ok(Decision::Committed),
         Ok(Decision::Aborted),
         Err(Unavailable),
-    ] {
-        assert!(results.contains(&result), "{result:?} never happened");
+    ];
+    for seed in 0..SEARCHED_SEEDS {
+        let result = handle(&FuzzedEnvironment::new(seed, 2), "t").await;
+        unseen.retain(|&expected| expected != result);
+        if unseen.is_empty() {
+            return;
+        }
     }
+    panic!("{unseen:?} never happened in {SEARCHED_SEEDS} seeds, far too many to be bad luck");
 }
 
 #[tokio::test]
 async fn completes_concurrent_calls_in_any_order() {
-    let mut finished_first = Vec::new();
-    for seed in 0..100 {
+    let mut unseen = vec![0, 1];
+    for seed in 0..SEARCHED_SEEDS {
         let environment = FuzzedEnvironment::new(seed, 2);
         let resource_managers = environment.resource_managers();
-        finished_first.push(tokio::select! {
+        let finished_first = tokio::select! {
             biased;
             _ = resource_managers[0].prepare("t", Duration::ZERO) => 0,
             _ = resource_managers[1].prepare("t", Duration::ZERO) => 1,
-        });
+        };
+        unseen.retain(|&rm| rm != finished_first);
+        if unseen.is_empty() {
+            return;
+        }
     }
-    for rm in [0, 1] {
-        assert!(finished_first.contains(&rm), "{rm} never finished first");
-    }
+    panic!(
+        "{unseen:?} never finished first in {SEARCHED_SEEDS} seeds, far too many to be bad luck"
+    );
 }
