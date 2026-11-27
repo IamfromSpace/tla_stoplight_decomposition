@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use futures_util::stream::{FuturesUnordered, StreamExt};
 
-use super::interface::{Decision, Environment, ResourceManager, Unavailable, Vote};
+use super::interface::{Decision, Environment, HandlerStep, ResourceManager, Unavailable, Vote};
 
 const TIMEOUT: Duration = Duration::from_secs(1);
 
@@ -10,32 +10,42 @@ pub async fn handle(
     environment: &impl Environment,
     transaction_id: &str,
 ) -> Result<Decision, Unavailable> {
+    environment.record(HandlerStep::Start);
     let decision = match environment.read_decision(transaction_id).await? {
         Some(decision) => decision,
         None => {
+            environment.record(HandlerStep::Collect);
             let mut votes: FuturesUnordered<_> = environment
                 .resource_managers()
                 .iter()
-                .map(|resource_manager| resource_manager.prepare(transaction_id, TIMEOUT))
+                .enumerate()
+                .map(|(rm, resource_manager)| async move {
+                    environment.record(HandlerStep::RequestPrepare(rm));
+                    (rm, resource_manager.prepare(transaction_id, TIMEOUT).await)
+                })
                 .collect();
-            let mut proposal = Decision::Committed;
-            while let Some(vote) = votes.next().await {
-                match vote {
-                    Ok(Vote::Prepared) => {}
-                    Ok(Vote::Refused) | Err(Unavailable) => {
-                        proposal = Decision::Aborted;
-                        break;
+            let (step, proposal) = loop {
+                match votes.next().await {
+                    Some((rm, Ok(Vote::Prepared))) => {
+                        environment.record(HandlerStep::ReceivePrepared(rm))
                     }
+                    Some((_, Ok(Vote::Refused))) => break (HandlerStep::Abort, Decision::Aborted),
+                    Some((_, Err(Unavailable))) => break (HandlerStep::Timeout, Decision::Aborted),
+                    None => break (HandlerStep::Commit, Decision::Committed),
                 }
-            }
+            };
+            environment.record(step);
             environment.write_decision(transaction_id, proposal).await?
         }
     };
+    environment.record(HandlerStep::Learn(decision));
 
     let mut informing: FuturesUnordered<_> = environment
         .resource_managers()
         .iter()
-        .map(|resource_manager| async move {
+        .enumerate()
+        .map(|(rm, resource_manager)| async move {
+            environment.record(HandlerStep::Broadcast(rm));
             match decision {
                 Decision::Committed => resource_manager.commit(transaction_id).await,
                 Decision::Aborted => resource_manager.abort(transaction_id).await,
@@ -60,8 +70,10 @@ mod tests {
     use futures_util::FutureExt;
 
     use super::handle;
+    use crate::transaction_manager::interface::HandlerStep::*;
     use crate::transaction_manager::interface::{
-        Database, Decision, Environment, ResourceManager, Unavailable, Vote,
+        Database, Decision, Environment, HandlerLog, HandlerStep, ResourceManager, Unavailable,
+        Vote,
     };
 
     struct TestResourceManager {
@@ -122,6 +134,7 @@ mod tests {
         other_handler: Option<OtherHandler>,
         decision: Mutex<Option<Decision>>,
         resource_managers: Vec<TestResourceManager>,
+        steps: Mutex<Vec<HandlerStep>>,
     }
 
     fn environment(resource_managers: Vec<TestResourceManager>) -> TestEnvironment {
@@ -130,6 +143,7 @@ mod tests {
             other_handler: None,
             decision: Mutex::default(),
             resource_managers,
+            steps: Mutex::default(),
         }
     }
 
@@ -139,6 +153,16 @@ mod tests {
                 .iter()
                 .map(|resource_manager| resource_manager.received.lock().unwrap().join(" "))
                 .collect()
+        }
+
+        fn steps(&self) -> Vec<HandlerStep> {
+            self.steps.lock().unwrap().clone()
+        }
+    }
+
+    impl HandlerLog for TestEnvironment {
+        fn record(&self, step: HandlerStep) {
+            self.steps.lock().unwrap().push(step);
         }
     }
 
@@ -186,6 +210,21 @@ mod tests {
         ]);
         assert_eq!(handle(&environment, "t").await, Ok(Decision::Committed));
         assert_eq!(environment.received(), ["prepare commit", "prepare commit"]);
+        assert_eq!(
+            environment.steps(),
+            [
+                Start,
+                Collect,
+                RequestPrepare(0),
+                ReceivePrepared(0),
+                RequestPrepare(1),
+                ReceivePrepared(1),
+                Commit,
+                Learn(Decision::Committed),
+                Broadcast(0),
+                Broadcast(1),
+            ]
+        );
     }
 
     #[test]
@@ -199,6 +238,19 @@ mod tests {
             Some(Ok(Decision::Aborted))
         );
         assert_eq!(environment.received(), ["prepare abort", "prepare abort"]);
+        assert_eq!(
+            environment.steps(),
+            [
+                Start,
+                Collect,
+                RequestPrepare(0),
+                RequestPrepare(1),
+                Abort,
+                Learn(Decision::Aborted),
+                Broadcast(0),
+                Broadcast(1),
+            ]
+        );
     }
 
     #[tokio::test]
@@ -209,6 +261,20 @@ mod tests {
         ]);
         assert_eq!(handle(&environment, "t").await, Ok(Decision::Aborted));
         assert_eq!(environment.received(), ["prepare abort", "prepare abort"]);
+        assert_eq!(
+            environment.steps(),
+            [
+                Start,
+                Collect,
+                RequestPrepare(0),
+                ReceivePrepared(0),
+                RequestPrepare(1),
+                Timeout,
+                Learn(Decision::Aborted),
+                Broadcast(0),
+                Broadcast(1),
+            ]
+        );
     }
 
     #[tokio::test]
@@ -219,6 +285,10 @@ mod tests {
         };
         assert_eq!(handle(&environment, "t").await, Ok(Decision::Committed));
         assert_eq!(environment.received(), ["commit"]);
+        assert_eq!(
+            environment.steps(),
+            [Start, Learn(Decision::Committed), Broadcast(0)]
+        );
     }
 
     #[tokio::test]
@@ -229,6 +299,18 @@ mod tests {
         };
         assert_eq!(handle(&environment, "t").await, Ok(Decision::Aborted));
         assert_eq!(environment.received(), ["prepare abort"]);
+        assert_eq!(
+            environment.steps(),
+            [
+                Start,
+                Collect,
+                RequestPrepare(0),
+                ReceivePrepared(0),
+                Commit,
+                Learn(Decision::Aborted),
+                Broadcast(0),
+            ]
+        );
     }
 
     #[tokio::test]
@@ -239,6 +321,7 @@ mod tests {
         };
         assert_eq!(handle(&environment, "t").await, Err(Unavailable));
         assert_eq!(environment.received(), [""]);
+        assert_eq!(environment.steps(), [Start]);
     }
 
     #[tokio::test]

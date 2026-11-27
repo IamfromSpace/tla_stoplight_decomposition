@@ -60,7 +60,7 @@ pub trait HandlerLog: Sync {
     fn record(&self, step: HandlerStep);
 }
 
-pub trait Environment: Database {
+pub trait Environment: Database + HandlerLog {
     type ResourceManager: ResourceManager;
     fn resource_managers(&self) -> &[Self::ResourceManager];
 }

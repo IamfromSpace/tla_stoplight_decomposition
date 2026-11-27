@@ -12,7 +12,9 @@ use rand::seq::IndexedRandom;
 use tokio::task::yield_now;
 
 use super::handler::handle;
-use super::interface::{Database, Decision, Environment, ResourceManager, Unavailable, Vote};
+use super::interface::{
+    Database, Decision, Environment, HandlerLog, HandlerStep, ResourceManager, Unavailable, Vote,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Message {
@@ -252,6 +254,10 @@ impl Database for FuzzedEnvironment {
             outcome => unreachable!("{outcome:?}"),
         }
     }
+}
+
+impl HandlerLog for FuzzedEnvironment {
+    fn record(&self, _: HandlerStep) {}
 }
 
 impl Environment for FuzzedEnvironment {
