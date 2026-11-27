@@ -1,6 +1,8 @@
-//! Mirrors two_phase_commit_transaction_manager_handler_environment.tla, and fuzzes the handler
-//! with it.
+//! Mirrors two_phase_commit_transaction_manager_handler_environment.tla with
+//! two_phase_commit_transaction_manager_handler_environment_sync_adapter.tla baked in, and fuzzes
+//! the handler with it.
 
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -17,17 +19,28 @@ enum Message {
     Reply(Option<Decision>),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Request {
     ReadDecision,
     WriteDecision(Decision),
+    Prepare(usize),
+    Commit(usize),
+    Abort(usize),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Outcome {
+    Received(Message),
+    Unavailable,
+    Acknowledged,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Step {
     Vote(usize, Vote),
     Decide(Decision),
-    Reply(Request, Option<Decision>),
+    Reply(Option<Decision>),
+    Pair(Request, Outcome),
 }
 
 struct HandlerEnvironment {
@@ -35,6 +48,7 @@ struct HandlerEnvironment {
     inbox: Vec<Message>,
     outbox: Vec<Request>,
     decision: Option<Decision>,
+    outcomes: BTreeMap<Request, Outcome>,
 }
 
 impl HandlerEnvironment {
@@ -44,6 +58,7 @@ impl HandlerEnvironment {
             inbox: Vec::new(),
             outbox: Vec::new(),
             decision: None,
+            outcomes: BTreeMap::new(),
         }
     }
 
@@ -75,11 +90,40 @@ impl HandlerEnvironment {
     }
 
     fn reply(&self) -> Vec<Step> {
+        let asked_database = self
+            .outbox
+            .iter()
+            .any(|request| matches!(request, Request::ReadDecision | Request::WriteDecision(_)));
+        let mut steps = Vec::new();
+        if asked_database {
+            steps.push(Step::Reply(self.decision));
+            for decision in self.decide() {
+                steps.push(Step::Reply(Some(decision)));
+            }
+        }
+        steps
+    }
+
+    fn pair(&self) -> Vec<Step> {
         let mut steps = Vec::new();
         for &request in &self.outbox {
-            steps.push(Step::Reply(request, self.decision));
-            for decision in self.decide() {
-                steps.push(Step::Reply(request, Some(decision)));
+            if self.outcomes.contains_key(&request) {
+                continue;
+            }
+            steps.push(Step::Pair(request, Outcome::Unavailable));
+            for &message in &self.inbox {
+                let possible = match (request, message) {
+                    (Request::ReadDecision, Message::Reply(_)) => true,
+                    (Request::WriteDecision(_), Message::Reply(Some(_))) => true,
+                    (Request::Prepare(rm), Message::Vote(voter, _)) => voter == rm,
+                    _ => false,
+                };
+                if possible {
+                    steps.push(Step::Pair(request, Outcome::Received(message)));
+                }
+            }
+            if let Request::Commit(_) | Request::Abort(_) = request {
+                steps.push(Step::Pair(request, Outcome::Acknowledged));
             }
         }
         steps
@@ -92,6 +136,7 @@ impl HandlerEnvironment {
         }
         steps.extend(self.decide().into_iter().map(Step::Decide));
         steps.extend(self.reply());
+        steps.extend(self.pair());
         steps
     }
 
@@ -99,9 +144,12 @@ impl HandlerEnvironment {
         match step {
             Step::Vote(rm, vote) => insert(&mut self.inbox, Message::Vote(rm, vote)),
             Step::Decide(decision) => self.decision = Some(decision),
-            Step::Reply(_, decision) => {
+            Step::Reply(decision) => {
                 self.decision = decision;
                 insert(&mut self.inbox, Message::Reply(decision));
+            }
+            Step::Pair(request, outcome) => {
+                self.outcomes.insert(request, outcome);
             }
         }
     }
@@ -117,7 +165,8 @@ fn insert<T: PartialEq>(set: &mut Vec<T>, element: T) {
     }
 }
 
-const YES_VOTE_WEIGHT: u32 = 8;
+const YES_VOTE_WEIGHT: f64 = 8.0;
+const FAILURE_WEIGHT: f64 = 0.125;
 
 struct Fuzzer {
     random: StdRng,
@@ -128,20 +177,27 @@ impl Fuzzer {
     // TODO: Trace each state with the steps offered from it, so TLC can check that every step
     // taken is a step of Next, and that none were missed: Next isn't ENABLED once the offered
     // steps are ruled out.
-    fn step_or_stop(&mut self) -> Option<Step> {
-        let steps = self.environment.next();
-        let mut choices: Vec<Option<Step>> = steps.into_iter().map(Some).collect();
-        choices.push(None);
-        let choice = *choices
-            .choose_weighted(&mut self.random, |choice| match choice {
-                Some(Step::Vote(_, Vote::Prepared)) => YES_VOTE_WEIGHT,
-                _ => 1,
+    fn step(&mut self) {
+        let step = *self
+            .environment
+            .next()
+            .choose_weighted(&mut self.random, |step| match step {
+                Step::Vote(_, Vote::Prepared) => YES_VOTE_WEIGHT,
+                Step::Pair(_, Outcome::Unavailable) => FAILURE_WEIGHT,
+                _ => 1.0,
             })
-            .expect("stopping is always a choice");
-        if let Some(step) = choice {
-            self.environment.take(step);
+            .expect("a pending request can always fail");
+        self.environment.take(step);
+    }
+
+    fn call(&mut self, request: Request) -> Outcome {
+        self.environment.send(request);
+        loop {
+            if let Some(&outcome) = self.environment.outcomes.get(&request) {
+                return outcome;
+            }
+            self.step();
         }
-        choice
     }
 }
 
@@ -179,27 +235,19 @@ impl FuzzedEnvironment {
 
 impl Database for FuzzedEnvironment {
     async fn read_decision(&self, _: &str) -> Result<Option<Decision>, Unavailable> {
-        let mut fuzzer = self.fuzzer.lock().unwrap();
-        fuzzer.environment.send(Request::ReadDecision);
-        loop {
-            match fuzzer.step_or_stop() {
-                Some(Step::Reply(Request::ReadDecision, decision)) => return Ok(decision),
-                Some(_) => {}
-                None => return Err(Unavailable),
-            }
+        match self.fuzzer.lock().unwrap().call(Request::ReadDecision) {
+            Outcome::Received(Message::Reply(decision)) => Ok(decision),
+            Outcome::Unavailable => Err(Unavailable),
+            outcome => unreachable!("{outcome:?}"),
         }
     }
 
     async fn write_decision(&self, _: &str, decision: Decision) -> Result<Decision, Unavailable> {
         let write = Request::WriteDecision(decision);
-        let mut fuzzer = self.fuzzer.lock().unwrap();
-        fuzzer.environment.send(write);
-        loop {
-            match fuzzer.step_or_stop() {
-                Some(Step::Reply(request, Some(stands))) if request == write => return Ok(stands),
-                Some(_) => {}
-                None => return Err(Unavailable),
-            }
+        match self.fuzzer.lock().unwrap().call(write) {
+            Outcome::Received(Message::Reply(Some(stands))) => Ok(stands),
+            Outcome::Unavailable => Err(Unavailable),
+            outcome => unreachable!("{outcome:?}"),
         }
     }
 }
@@ -214,21 +262,27 @@ impl Environment for FuzzedEnvironment {
 
 impl ResourceManager for FuzzedResourceManager {
     async fn prepare(&self, _: &str, _: Duration) -> Result<Vote, Unavailable> {
-        let mut fuzzer = self.fuzzer.lock().unwrap();
-        while fuzzer.step_or_stop().is_some() {}
-        fuzzer.environment.voted(self.rm).ok_or(Unavailable)
+        match self.fuzzer.lock().unwrap().call(Request::Prepare(self.rm)) {
+            Outcome::Received(Message::Vote(_, vote)) => Ok(vote),
+            Outcome::Unavailable => Err(Unavailable),
+            outcome => unreachable!("{outcome:?}"),
+        }
     }
 
     async fn commit(&self, _: &str) -> Result<(), Unavailable> {
-        let mut fuzzer = self.fuzzer.lock().unwrap();
-        while fuzzer.step_or_stop().is_some() {}
-        Ok(())
+        match self.fuzzer.lock().unwrap().call(Request::Commit(self.rm)) {
+            Outcome::Acknowledged => Ok(()),
+            Outcome::Unavailable => Err(Unavailable),
+            outcome => unreachable!("{outcome:?}"),
+        }
     }
 
     async fn abort(&self, _: &str) -> Result<(), Unavailable> {
-        let mut fuzzer = self.fuzzer.lock().unwrap();
-        while fuzzer.step_or_stop().is_some() {}
-        Ok(())
+        match self.fuzzer.lock().unwrap().call(Request::Abort(self.rm)) {
+            Outcome::Acknowledged => Ok(()),
+            Outcome::Unavailable => Err(Unavailable),
+            outcome => unreachable!("{outcome:?}"),
+        }
     }
 }
 
@@ -246,7 +300,8 @@ fn next_follows_the_specification() {
         ]
     );
 
-    environment.send(Request::ReadDecision);
+    let read = Request::ReadDecision;
+    environment.send(read);
     environment.take(Step::Vote(0, Vote::Prepared));
     environment.take(Step::Vote(1, Vote::Prepared));
     assert_eq!(
@@ -254,20 +309,59 @@ fn next_follows_the_specification() {
         [
             Step::Decide(Decision::Aborted),
             Step::Decide(Decision::Committed),
-            Step::Reply(Request::ReadDecision, None),
-            Step::Reply(Request::ReadDecision, Some(Decision::Aborted)),
-            Step::Reply(Request::ReadDecision, Some(Decision::Committed)),
+            Step::Reply(None),
+            Step::Reply(Some(Decision::Aborted)),
+            Step::Reply(Some(Decision::Committed)),
+            Step::Pair(read, Outcome::Unavailable),
         ]
     );
 
     let write = Request::WriteDecision(Decision::Committed);
+    let undecided = Outcome::Received(Message::Reply(None));
+    let committed = Outcome::Received(Message::Reply(Some(Decision::Committed)));
+    environment.take(Step::Reply(None));
     environment.send(write);
-    environment.take(Step::Reply(write, Some(Decision::Committed)));
+    environment.take(Step::Reply(Some(Decision::Committed)));
     assert_eq!(
         environment.next(),
         [
-            Step::Reply(Request::ReadDecision, Some(Decision::Committed)),
-            Step::Reply(write, Some(Decision::Committed)),
+            Step::Reply(Some(Decision::Committed)),
+            Step::Pair(read, Outcome::Unavailable),
+            Step::Pair(read, undecided),
+            Step::Pair(read, committed),
+            Step::Pair(write, Outcome::Unavailable),
+            Step::Pair(write, committed),
+        ]
+    );
+}
+
+#[test]
+fn pairs_each_request_once() {
+    let mut environment = HandlerEnvironment::new(2);
+    let prepare = Request::Prepare(0);
+    let abort = Request::Abort(1);
+    let refused = Outcome::Received(Message::Vote(0, Vote::Refused));
+    environment.send(prepare);
+    environment.send(abort);
+    environment.take(Step::Vote(0, Vote::Refused));
+    environment.take(Step::Vote(1, Vote::Prepared));
+    assert_eq!(
+        environment.pair(),
+        [
+            Step::Pair(prepare, Outcome::Unavailable),
+            Step::Pair(prepare, refused),
+            Step::Pair(abort, Outcome::Unavailable),
+            Step::Pair(abort, Outcome::Acknowledged),
+        ]
+    );
+
+    environment.take(Step::Pair(prepare, refused));
+    assert_eq!(environment.outcomes.get(&prepare), Some(&refused));
+    assert_eq!(
+        environment.pair(),
+        [
+            Step::Pair(abort, Outcome::Unavailable),
+            Step::Pair(abort, Outcome::Acknowledged),
         ]
     );
 }
@@ -283,16 +377,16 @@ async fn reports_the_decision_that_stands() {
 }
 
 #[tokio::test]
-async fn reaches_every_outcome() {
-    let mut outcomes = Vec::new();
+async fn reaches_every_result() {
+    let mut results = Vec::new();
     for seed in 0..1000 {
-        outcomes.push(handle(&FuzzedEnvironment::new(seed, 2), "t").await);
+        results.push(handle(&FuzzedEnvironment::new(seed, 2), "t").await);
     }
-    for outcome in [
+    for result in [
         Ok(Decision::Committed),
         Ok(Decision::Aborted),
         Err(Unavailable),
     ] {
-        assert!(outcomes.contains(&outcome), "{outcome:?} never happened");
+        assert!(results.contains(&result), "{result:?} never happened");
     }
 }

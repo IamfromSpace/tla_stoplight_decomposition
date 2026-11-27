@@ -20,7 +20,7 @@ pub trait ResourceManager: Sync {
     fn abort(&self, transaction_id: &str) -> impl Future<Output = Result<(), Unavailable>> + Send;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Decision {
     Committed,
     Aborted,
