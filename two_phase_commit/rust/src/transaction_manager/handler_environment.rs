@@ -171,15 +171,21 @@ fn insert<T: PartialEq>(set: &mut Vec<T>, element: T) {
 const YES_VOTE_WEIGHT: f64 = 8.0;
 const FAILURE_WEIGHT: f64 = 0.125;
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TraceEntry {
+    Handler(HandlerStep),
+    Environment(Step),
+}
+
 struct Fuzzer {
     random: StdRng,
     environment: HandlerEnvironment,
+    trace: Vec<TraceEntry>,
 }
 
 impl Fuzzer {
-    // TODO: Trace each state with the steps offered from it, so TLC can check that every step
-    // taken is a step of Next, and that none were missed: Next isn't ENABLED once the offered
-    // steps are ruled out.
+    // TODO: Also trace the steps offered at each step, so TLC can check that none were missed:
+    // Next isn't ENABLED once the offered steps are ruled out.
     fn step(&mut self) {
         let step = *self
             .environment
@@ -191,6 +197,7 @@ impl Fuzzer {
             })
             .expect("a pending request can always fail");
         self.environment.take(step);
+        self.trace.push(TraceEntry::Environment(step));
     }
 }
 
@@ -220,6 +227,7 @@ impl FuzzedEnvironment {
         let fuzzer = Arc::new(Mutex::new(Fuzzer {
             random: StdRng::seed_from_u64(seed),
             environment: HandlerEnvironment::new(resource_managers),
+            trace: Vec::new(),
         }));
         FuzzedEnvironment {
             resource_managers: (0..resource_managers)
@@ -234,6 +242,10 @@ impl FuzzedEnvironment {
 
     fn decision(&self) -> Option<Decision> {
         self.fuzzer.lock().unwrap().environment.decision
+    }
+
+    fn trace(&self) -> Vec<TraceEntry> {
+        self.fuzzer.lock().unwrap().trace.clone()
     }
 }
 
@@ -257,7 +269,10 @@ impl Database for FuzzedEnvironment {
 }
 
 impl HandlerLog for FuzzedEnvironment {
-    fn record(&self, _: HandlerStep) {}
+    fn record(&self, step: HandlerStep) {
+        let mut fuzzer = self.fuzzer.lock().unwrap();
+        fuzzer.trace.push(TraceEntry::Handler(step));
+    }
 }
 
 impl Environment for FuzzedEnvironment {
@@ -370,6 +385,46 @@ fn pairs_each_request_once() {
         [
             Step::Pair(abort, Outcome::Unavailable),
             Step::Pair(abort, Outcome::Acknowledged),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn traces_both_sides_in_order() {
+    use HandlerStep::*;
+    use TraceEntry::{Environment, Handler};
+
+    let undecided = Outcome::Received(Message::Reply(None));
+    let committed = Outcome::Received(Message::Reply(Some(Decision::Committed)));
+    let prepared = |rm| Outcome::Received(Message::Vote(rm, Vote::Prepared));
+    let write = Request::WriteDecision(Decision::Committed);
+
+    // A seed whose run commits through its own write.
+    let environment = FuzzedEnvironment::new(61198, 2);
+    assert_eq!(handle(&environment, "t").await, Ok(Decision::Committed));
+    assert_eq!(
+        environment.trace(),
+        [
+            Handler(Start),
+            Environment(Step::Reply(None)),
+            Environment(Step::Vote(1, Vote::Prepared)),
+            Environment(Step::Pair(Request::ReadDecision, undecided)),
+            Handler(Collect),
+            Handler(RequestPrepare(0)),
+            Environment(Step::Vote(0, Vote::Prepared)),
+            Handler(RequestPrepare(1)),
+            Environment(Step::Pair(Request::Prepare(1), prepared(1))),
+            Handler(ReceivePrepared(1)),
+            Environment(Step::Pair(Request::Prepare(0), prepared(0))),
+            Handler(ReceivePrepared(0)),
+            Handler(Commit),
+            Environment(Step::Reply(Some(Decision::Committed))),
+            Environment(Step::Pair(write, committed)),
+            Handler(Learn(Decision::Committed)),
+            Handler(Broadcast(0)),
+            Environment(Step::Pair(Request::Commit(0), Outcome::Acknowledged)),
+            Handler(Broadcast(1)),
+            Environment(Step::Pair(Request::Commit(1), Outcome::Acknowledged)),
         ]
     );
 }
