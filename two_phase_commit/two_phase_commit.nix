@@ -121,6 +121,27 @@ let
       tlc $SPEC -config ${./two_phase_commit_transaction_manager_handler_in_environment.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
       '';
 
+  two_phase_commit_transaction_manager_handler_trace_examples =
+    runCommand
+      "two_phase_commit_transaction_manager_handler_trace_examples"
+      {
+        buildInputs = [ tlaplus ];
+      }
+      ''
+      set -euo pipefail
+
+      SPEC=two_phase_commit_transaction_manager_handler_trace_examples.tla
+      WORKERS=$(( $(nproc) * 3 / 4 ))
+      cp -L ${./two_phase_commit_transaction_manager_handler_trace_examples.tla} $SPEC
+      cp -L ${./two_phase_commit_transaction_manager_handler_trace.tla} two_phase_commit_transaction_manager_handler_trace.tla
+      cp -L ${./two_phase_commit_transaction_manager_handler_in_environment.tla} two_phase_commit_transaction_manager_handler_in_environment.tla
+      cp -L ${./two_phase_commit_transaction_manager_handlers.tla} two_phase_commit_transaction_manager_handlers.tla
+      cp -L ${./two_phase_commit_transaction_manager_handler_environment.tla} two_phase_commit_transaction_manager_handler_environment.tla
+      cp -L ${./two_phase_commit_transaction_manager_handler_environment_sync_adapter.tla} two_phase_commit_transaction_manager_handler_environment_sync_adapter.tla
+      mkdir -p $out/share
+      tlc $SPEC -config ${./two_phase_commit_transaction_manager_handler_trace_examples.cfg} -workers $WORKERS | tee $out/share/$SPEC.log
+      '';
+
 in
   symlinkJoin
     { name = "all_specs";
@@ -130,5 +151,6 @@ in
           two_phase_commit_transaction_manager_refined_in_environment
           two_phase_commit_transaction_manager_refined_in_environment_sync
           two_phase_commit_transaction_manager_handler_in_environment
+          two_phase_commit_transaction_manager_handler_trace_examples
         ];
     }
