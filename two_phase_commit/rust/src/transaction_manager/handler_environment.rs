@@ -17,13 +17,13 @@ use super::interface::{
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Message {
+pub(super) enum Message {
     Vote(usize, Vote),
     Reply(Option<Decision>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum Request {
+pub(super) enum Request {
     ReadDecision,
     WriteDecision(Decision),
     Prepare(usize),
@@ -32,14 +32,14 @@ enum Request {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Outcome {
+pub(super) enum Outcome {
     Received(Message),
     Unavailable,
     Acknowledged,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Step {
+pub(super) enum Step {
     Vote(usize, Vote),
     Decide(Decision),
     Reply(Option<Decision>),
@@ -172,7 +172,7 @@ const YES_VOTE_WEIGHT: f64 = 8.0;
 const FAILURE_WEIGHT: f64 = 0.125;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum TraceEntry {
+pub(super) enum TraceEntry {
     Handler(HandlerStep),
     Environment(Step),
 }
