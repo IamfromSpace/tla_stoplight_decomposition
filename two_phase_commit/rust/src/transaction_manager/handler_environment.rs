@@ -171,10 +171,10 @@ fn insert<T: PartialEq>(set: &mut Vec<T>, element: T) {
 const YES_VOTE_WEIGHT: f64 = 8.0;
 const FAILURE_WEIGHT: f64 = 0.125;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) enum TraceEntry {
     Handler(HandlerStep),
-    Environment(Step),
+    Environment { taken: Step, considered: Vec<Step> },
 }
 
 struct Fuzzer {
@@ -184,20 +184,20 @@ struct Fuzzer {
 }
 
 impl Fuzzer {
-    // TODO: Also trace the steps offered at each step, so TLC can check that none were missed:
-    // Next isn't ENABLED once the offered steps are ruled out.
+    // TODO: Have TLC check that no step was missed: Next isn't ENABLED once the considered steps
+    // are ruled out.
     fn step(&mut self) {
-        let step = *self
-            .environment
-            .next()
+        let considered = self.environment.next();
+        let taken = *considered
             .choose_weighted(&mut self.random, |step| match step {
                 Step::Vote(_, Vote::Prepared) => YES_VOTE_WEIGHT,
                 Step::Pair(_, Outcome::Unavailable) => FAILURE_WEIGHT,
                 _ => 1.0,
             })
             .expect("a pending request can always fail");
-        self.environment.take(step);
-        self.trace.push(TraceEntry::Environment(step));
+        self.environment.take(taken);
+        self.trace
+            .push(TraceEntry::Environment { taken, considered });
     }
 }
 
@@ -392,7 +392,13 @@ fn pairs_each_request_once() {
 #[tokio::test]
 async fn traces_both_sides_in_order() {
     use HandlerStep::*;
-    use TraceEntry::{Environment, Handler};
+    use Taken::{Environment, Handler};
+
+    #[derive(Debug, PartialEq)]
+    enum Taken {
+        Handler(HandlerStep),
+        Environment(Step),
+    }
 
     let undecided = Outcome::Received(Message::Reply(None));
     let committed = Outcome::Received(Message::Reply(Some(Decision::Committed)));
@@ -402,8 +408,16 @@ async fn traces_both_sides_in_order() {
     // A seed whose run commits through its own write.
     let environment = FuzzedEnvironment::new(61198, 2);
     assert_eq!(handle(&environment, "t").await, Ok(Decision::Committed));
+    let taken: Vec<Taken> = environment
+        .trace()
+        .into_iter()
+        .map(|entry| match entry {
+            TraceEntry::Handler(step) => Handler(step),
+            TraceEntry::Environment { taken, .. } => Environment(taken),
+        })
+        .collect();
     assert_eq!(
-        environment.trace(),
+        taken,
         [
             Handler(Start),
             Environment(Step::Reply(None)),
@@ -425,6 +439,30 @@ async fn traces_both_sides_in_order() {
             Environment(Step::Pair(Request::Commit(0), Outcome::Acknowledged)),
             Handler(Broadcast(1)),
             Environment(Step::Pair(Request::Commit(1), Outcome::Acknowledged)),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn traces_the_steps_considered_with_the_one_taken() {
+    let environment = FuzzedEnvironment::new(0, 2);
+    let _ = handle(&environment, "t").await;
+    let trace = environment.trace();
+    let TraceEntry::Environment { taken, considered } = &trace[1] else {
+        panic!("the fuzzer steps as soon as the handler reads");
+    };
+    assert!(considered.contains(taken));
+    assert_eq!(
+        *considered,
+        [
+            Step::Vote(0, Vote::Prepared),
+            Step::Vote(0, Vote::Refused),
+            Step::Vote(1, Vote::Prepared),
+            Step::Vote(1, Vote::Refused),
+            Step::Decide(Decision::Aborted),
+            Step::Reply(None),
+            Step::Reply(Some(Decision::Aborted)),
+            Step::Pair(Request::ReadDecision, Outcome::Unavailable),
         ]
     );
 }

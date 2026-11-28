@@ -107,27 +107,31 @@ impl ToTla for HandlerStep {
     }
 }
 
+fn step_fields(step: &Step) -> String {
+    match step {
+        Step::Vote(rm, vote) => format!(
+            r#"environment |-> "Vote", rm |-> {rm}, vote |-> {}"#,
+            vote.to_tla()
+        ),
+        Step::Decide(decision) => format!(
+            r#"environment |-> "Decide", decision |-> {}"#,
+            decision.to_tla()
+        ),
+        Step::Reply(decision) => format!(
+            r#"environment |-> "Reply", decision |-> {}"#,
+            decision.to_tla()
+        ),
+        Step::Pair(request, outcome) => format!(
+            r#"environment |-> "Pair", request |-> {}, outcome |-> {}"#,
+            request.to_tla(),
+            outcome.to_tla()
+        ),
+    }
+}
+
 impl ToTla for Step {
     fn to_tla(&self) -> String {
-        match self {
-            Step::Vote(rm, vote) => format!(
-                r#"[ environment |-> "Vote", rm |-> {rm}, vote |-> {} ]"#,
-                vote.to_tla()
-            ),
-            Step::Decide(decision) => format!(
-                r#"[ environment |-> "Decide", decision |-> {} ]"#,
-                decision.to_tla()
-            ),
-            Step::Reply(decision) => format!(
-                r#"[ environment |-> "Reply", decision |-> {} ]"#,
-                decision.to_tla()
-            ),
-            Step::Pair(request, outcome) => format!(
-                r#"[ environment |-> "Pair", request |-> {}, outcome |-> {} ]"#,
-                request.to_tla(),
-                outcome.to_tla()
-            ),
-        }
+        format!("[ {} ]", step_fields(self))
     }
 }
 
@@ -135,7 +139,14 @@ impl ToTla for TraceEntry {
     fn to_tla(&self) -> String {
         match self {
             TraceEntry::Handler(step) => step.to_tla(),
-            TraceEntry::Environment(step) => step.to_tla(),
+            TraceEntry::Environment { taken, considered } => {
+                let considered: Vec<String> = considered.iter().map(Step::to_tla).collect();
+                format!(
+                    "[ {}, considered |-> << {} >> ]",
+                    step_fields(taken),
+                    considered.join(", ")
+                )
+            }
         }
     }
 }
@@ -228,14 +239,26 @@ fn writes_steps_as_the_trace_spec_parses_them() {
 }
 
 #[test]
+fn writes_an_environment_entry_as_the_step_taken_with_those_considered() {
+    let entry = TraceEntry::Environment {
+        taken: Step::Reply(None),
+        considered: vec![Step::Decide(Decision::Aborted), Step::Reply(None)],
+    };
+    assert_eq!(
+        entry.to_tla(),
+        r#"[ environment |-> "Reply", decision |-> "None", considered |-> << [ environment |-> "Decide", decision |-> "Aborted" ], [ environment |-> "Reply", decision |-> "None" ] >> ]"#
+    );
+}
+
+#[test]
 fn writes_a_trace_as_a_sequence_of_its_entries() {
     let trace = [
         TraceEntry::Handler(HandlerStep::Start),
-        TraceEntry::Environment(Step::Decide(Decision::Aborted)),
+        TraceEntry::Handler(HandlerStep::Collect),
     ];
     assert_eq!(
         trace.to_tla(),
-        r#"<< [ handler |-> "Start" ], [ environment |-> "Decide", decision |-> "Aborted" ] >>"#
+        r#"<< [ handler |-> "Start" ], [ handler |-> "Collect" ] >>"#
     );
 }
 
