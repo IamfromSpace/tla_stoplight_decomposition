@@ -50,6 +50,7 @@ Received == Range(outcomes) \ { Unavailable, Acknowledged }
 Init == outcomes = << >>
 
 Pair(request, outcome) ==
+    /\ request \in outbox
     /\ request \notin DOMAIN outcomes
     /\ outcome \in PossibleOutcomes(request)
     /\ outcomes' = (request :> outcome) @@ outcomes
