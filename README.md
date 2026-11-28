@@ -3,6 +3,7 @@
 ## Checking
 
 This project is built with nix, so `nix-build` will model check all specifications, check all proofs, and generate all graphs.
+In `two_phase_commit/rust`, `cargo test` also has TLC replay the fuzzer's traces, so it needs `tlc` on the `PATH`, as `nix-build` provides.
 
 ## Decomposition in General
 

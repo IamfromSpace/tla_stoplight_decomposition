@@ -1,6 +1,11 @@
 //! Writes the fuzzer's traces for two_phase_commit_transaction_manager_handler_trace.tla to replay.
 
-use super::handler_environment::{Message, Outcome, Request, Step, TraceEntry};
+use std::fs;
+use std::path::Path;
+use std::process::Command;
+
+use super::handler::handle;
+use super::handler_environment::{FuzzedEnvironment, Message, Outcome, Request, Step, TraceEntry};
 use super::interface::{Decision, HandlerStep, Vote};
 
 trait ToTla {
@@ -231,5 +236,81 @@ fn writes_a_trace_as_a_sequence_of_its_entries() {
     assert_eq!(
         trace.to_tla(),
         r#"<< [ handler |-> "Start" ], [ environment |-> "Decide", decision |-> "Aborted" ] >>"#
+    );
+}
+
+const FUZZED_MODULE: &str = "two_phase_commit_transaction_manager_handler_trace_fuzzed";
+
+const FUZZED_CONFIG: &str = r#"
+SPECIFICATION TraceSpec
+
+CONSTANT
+    Traces <- Fuzzed
+    Handler = h
+    ResourceManagers = { r1, r2 }
+    Txn = "t"
+    Idle = Idle
+    Reading = Reading
+    Collecting = Collecting
+    Committed = Committed
+    Aborted = Aborted
+    Undecided = Undecided
+    Database = Database
+    Insert = Insert
+    Select = Select
+    DoNothing = DoNothing
+    PrepareMsg = PrepareMsg
+    PreparedMsg = PreparedMsg
+    RefusedMsg = RefusedMsg
+    CommitMsg = CommitMsg
+    AbortMsg = AbortMsg
+    Unavailable = Unavailable
+    Acknowledged = Acknowledged
+
+INVARIANT TypeOK
+"#;
+
+#[tokio::test]
+async fn every_fuzzed_trace_is_a_behavior_of_the_composite() {
+    let mut traces = Vec::new();
+    for seed in 1..=1_000 {
+        let environment = FuzzedEnvironment::new(seed, 2);
+        let _ = handle(&environment, "t").await;
+        traces.push(environment.trace().to_tla());
+    }
+
+    let scratch = tempfile::tempdir().unwrap();
+    let directory = scratch.path();
+    let specifications = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
+    for entry in fs::read_dir(specifications).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|extension| extension == "tla") {
+            fs::copy(&path, directory.join(path.file_name().unwrap())).unwrap();
+        }
+    }
+    let module = format!(
+        "---- MODULE {FUZZED_MODULE} ----\n\
+         EXTENDS two_phase_commit_transaction_manager_handler_trace\n\
+         Fuzzed ==\n    << {} >>\n\
+         ====\n",
+        traces.join(",\n       ")
+    );
+    let module_file = format!("{FUZZED_MODULE}.tla");
+    let config_file = format!("{FUZZED_MODULE}.cfg");
+    fs::write(directory.join(&module_file), module).unwrap();
+    fs::write(directory.join(&config_file), FUZZED_CONFIG).unwrap();
+
+    let tlc = Command::new("tlc")
+        .current_dir(directory)
+        .arg(&module_file)
+        .arg("-config")
+        .arg(&config_file)
+        .output()
+        .expect("tlc should be on the PATH");
+    assert!(
+        tlc.status.success(),
+        "TLC couldn't replay every trace, where trace n is seed n:\n{}{}",
+        String::from_utf8_lossy(&tlc.stdout),
+        String::from_utf8_lossy(&tlc.stderr)
     );
 }

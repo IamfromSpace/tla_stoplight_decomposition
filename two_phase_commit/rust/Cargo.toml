@@ -8,4 +8,5 @@ futures-util = { version = "0.3.34", default-features = false, features = ["allo
 
 [dev-dependencies]
 rand = { version = "0.10.4", default-features = false, features = ["alloc", "std_rng"] }
+tempfile = { version = "3.27.0", default-features = false }
 tokio = { version = "1.54.1", features = ["macros", "rt"] }

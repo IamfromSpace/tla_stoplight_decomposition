@@ -212,18 +212,18 @@ async fn call(fuzzer: &Mutex<Fuzzer>, request: Request) -> Outcome {
     }
 }
 
-struct FuzzedEnvironment {
+pub(super) struct FuzzedEnvironment {
     fuzzer: Arc<Mutex<Fuzzer>>,
     resource_managers: Vec<FuzzedResourceManager>,
 }
 
-struct FuzzedResourceManager {
+pub(super) struct FuzzedResourceManager {
     rm: usize,
     fuzzer: Arc<Mutex<Fuzzer>>,
 }
 
 impl FuzzedEnvironment {
-    fn new(seed: u64, resource_managers: usize) -> Self {
+    pub(super) fn new(seed: u64, resource_managers: usize) -> Self {
         let fuzzer = Arc::new(Mutex::new(Fuzzer {
             random: StdRng::seed_from_u64(seed),
             environment: HandlerEnvironment::new(resource_managers),
@@ -244,7 +244,7 @@ impl FuzzedEnvironment {
         self.fuzzer.lock().unwrap().environment.decision
     }
 
-    fn trace(&self) -> Vec<TraceEntry> {
+    pub(super) fn trace(&self) -> Vec<TraceEntry> {
         self.fuzzer.lock().unwrap().trace.clone()
     }
 }
