@@ -134,6 +134,7 @@ let
       WORKERS=$(( $(nproc) * 3 / 4 ))
       cp -L ${./two_phase_commit_transaction_manager_handler_trace_examples.tla} $SPEC
       cp -L ${./two_phase_commit_transaction_manager_handler_trace.tla} two_phase_commit_transaction_manager_handler_trace.tla
+      cp -L ${./two_phase_commit_transaction_manager_handler_trace_steps.tla} two_phase_commit_transaction_manager_handler_trace_steps.tla
       cp -L ${./two_phase_commit_transaction_manager_handler_in_environment.tla} two_phase_commit_transaction_manager_handler_in_environment.tla
       cp -L ${./two_phase_commit_transaction_manager_handlers.tla} two_phase_commit_transaction_manager_handlers.tla
       cp -L ${./two_phase_commit_transaction_manager_handler_environment.tla} two_phase_commit_transaction_manager_handler_environment.tla

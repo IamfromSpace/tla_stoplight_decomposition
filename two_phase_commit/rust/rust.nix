@@ -20,6 +20,7 @@
             ./Cargo.lock
             (fs.fileFilter (x: x.hasExt "rs") ./src)
             ../two_phase_commit_transaction_manager_handler_trace.tla
+            ../two_phase_commit_transaction_manager_handler_trace_steps.tla
             ../two_phase_commit_transaction_manager_handler_in_environment.tla
             ../two_phase_commit_transaction_manager_handlers.tla
             ../two_phase_commit_transaction_manager_handler_environment.tla
